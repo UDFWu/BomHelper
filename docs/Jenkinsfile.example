@@ -1,0 +1,96 @@
+// =============================================================
+// 範例 Jenkinsfile：弱點掃描後將 CycloneDX BOM 報告上傳到 BomHelper
+//
+// 使用方式：
+//   1. 複製此檔到您的 Git repo 根目錄改名為 Jenkinsfile
+//   2. 在 Jenkins Pipeline Job 設定中指向此檔
+//   3. 將 BOMHELPER_URL / GITLAB_GROUP_ID / GITLAB_PROJECT_ID 改成您環境的值
+// =============================================================
+pipeline {
+    agent any
+
+    environment {
+        // BomHelper 服務位址（內部網段）
+        BOMHELPER_URL    = 'http://bomhelper.internal:8080'
+
+        // 該專案在 GitLab 上的 Group / Project ID
+        // 建議改成從 GitLab CI/CD 變數或 Jenkins 環境變數讀取
+        GITLAB_GROUP_ID   = '12345'
+        GITLAB_PROJECT_ID = '67890'
+
+        // 弱點掃描器輸出的 CycloneDX XML 路徑（相對於 workspace）
+        BOM_REPORT_PATH   = 'target/bom.xml'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'mvn -B clean package -DskipTests'
+            }
+        }
+
+        stage('Vulnerability Scan') {
+            steps {
+                // 範例：用 cyclonedx-maven-plugin 產出 BOM
+                // 實際弱點掃描指令請依貴公司使用的工具替換
+                sh 'mvn org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom'
+                sh "ls -la ${BOM_REPORT_PATH}"
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                // 先確認 BomHelper 服務存活，避免之後上傳時才發現連不到
+                sh '''
+                    curl -fsS "${BOMHELPER_URL}/api/ci/v1/bom/health" \
+                         -o /tmp/health.json
+                    cat /tmp/health.json
+                '''
+            }
+        }
+
+        stage('Upload BOM to BomHelper') {
+            steps {
+                script {
+                    // 將 BUILD_NUMBER / JOB_NAME 串成 importedBy，方便日後追蹤
+                    def importedBy = "jenkins:${env.JOB_NAME}#${env.BUILD_NUMBER}"
+
+                    // -F 是 multipart/form-data；@ 開頭代表上傳檔案
+                    // --fail-with-body 讓 HTTP 4xx/5xx 時 curl 返回非 0，pipeline 自動標 FAILED
+                    sh """
+                        curl -fsS --fail-with-body \
+                             -X POST "${BOMHELPER_URL}/api/ci/v1/bom/upload" \
+                             -F "file=@${BOM_REPORT_PATH}" \
+                             -F "gitlabGroupId=${GITLAB_GROUP_ID}" \
+                             -F "gitlabProjectId=${GITLAB_PROJECT_ID}" \
+                             -F "importedBy=${importedBy}" \
+                             -o /tmp/bom-upload-response.json
+                        echo "=== Upload response ==="
+                        cat /tmp/bom-upload-response.json
+                        echo ""
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ BOM 報告已成功上傳到 BomHelper"
+        }
+        failure {
+            echo "❌ Pipeline 失敗，請查看上方日誌"
+        }
+        always {
+            // 保存 BOM 與上傳回應，方便日後追溯
+            archiveArtifacts artifacts: "${BOM_REPORT_PATH}", allowEmptyArchive: true
+            archiveArtifacts artifacts: '/tmp/bom-upload-response.json', allowEmptyArchive: true
+        }
+    }
+}

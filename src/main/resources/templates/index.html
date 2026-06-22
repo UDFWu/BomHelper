@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-TW" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>SBOM 管理系統 - 儀表板</title>
+    <link rel="stylesheet" th:href="@{/css/dashboard.css}">
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="sidebar-header">
+        <h2>🛡️ BOM Helper</h2>
+    </div>
+    <ul class="nav-links">
+        <li><a th:href="@{/search}" target="app-frame" class="active">🔍 SBOM 雙向查詢</a></li>
+        <li><a th:href="@{/upload}" target="app-frame">📤 報告檔案上傳</a></li>
+    </ul>
+</div>
+
+<div class="main-content">
+    <div class="topbar">
+        <div class="page-title">SBOM 影響範圍與組成查詢系統</div>
+        <div class="user-actions">
+            <span class="user-name"
+                  th:text="${currentUser != null ? currentUser.displayName : '未登入'}">使用者</span>
+            <span th:if="${currentUser != null and currentUser.admin}"
+                  style="margin-left:6px; padding:2px 8px; font-size:12px; color:#fff;
+                         background-color:#c0392b; border-radius:10px;">Admin</span>
+            <!-- 用一個 form 觸發 POST /logout (Spring Security 預設僅接受 POST) -->
+            <form th:action="@{/logout}" method="post" style="display:inline; margin-left:8px;">
+                <button type="submit" class="logout-btn">登出</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="content-frame">
+        <iframe id="app-frame" name="app-frame" th:src="@{/search}" frameborder="0"></iframe>
+    </div>
+</div>
+
+<script>
+    // 簡單的選單切換效果
+    const links = document.querySelectorAll('.nav-links li a');
+    links.forEach(link => {
+        link.addEventListener('click', function() {
+            links.forEach(l => l.classList.remove('active'));
+            this.classList.add('active');
+        });
+    });
+</script>
+</body>
+</html>

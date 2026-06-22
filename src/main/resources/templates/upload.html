@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-TW" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SBOM 檔案上傳系統</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body>
+
+<div class="page-wrapper">
+    <div class="upload-container">
+        <h2>上傳 SBOM 安全報告</h2>
+
+        <form id="uploadForm">
+            <!-- importedBy 不再寫死，後端會自動使用目前登入的 GitLab 帳號 -->
+
+            <div class="file-input-wrapper">
+                <label for="gitlabGroupId">GitLab Group ID：</label>
+                <input type="text" id="gitlabGroupId" name="gitlabGroupId" required
+                       placeholder="例如：ncbs_mid" class="upload-input">
+            </div>
+
+            <div class="file-input-wrapper">
+                <label for="file-upload" class="custom-file-upload">
+                    📁 點擊選擇 SBOM XML 檔案
+                </label>
+                <input id="file-upload" type="file" name="file" accept=".xml" required />
+                <div id="file-name">尚未選擇任何檔案</div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">確認並上傳報告</button>
+        </form>
+
+        <div id="status-message"></div>
+    </div>
+</div>
+
+<script>
+    const fileUpload = document.getElementById('file-upload');
+    const fileNameDisplay = document.getElementById('file-name');
+    const uploadForm = document.getElementById('uploadForm');
+    const statusMsg = document.getElementById('status-message');
+    const submitBtn = document.getElementById('submitBtn');
+
+    fileUpload.addEventListener('change', function() {
+        fileNameDisplay.textContent = this.files[0] ? this.files[0].name : '尚未選擇任何檔案';
+    });
+
+    uploadForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        statusMsg.style.display = 'none';
+        statusMsg.className = '';
+        submitBtn.disabled = true;
+        submitBtn.textContent = '處理中...';
+
+        const formData = new FormData(uploadForm);
+
+        fetch('/api/v1/bom/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(async response => {
+            const text = await response.text();
+            if (response.ok) {
+                showStatus(text, 'success');
+                uploadForm.reset();
+                fileNameDisplay.textContent = '尚未選擇任何檔案';
+            } else {
+                showStatus('上傳失敗：' + text, 'error');
+            }
+        })
+        .catch(error => {
+            showStatus('連線發生錯誤，請稍後再試。', 'error');
+        })
+        .finally(() => {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '確認並上傳報告';
+        });
+    });
+
+    function showStatus(message, type) {
+        statusMsg.textContent = message;
+        statusMsg.className = type;
+        statusMsg.style.display = 'block';
+    }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-TW" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SBOM 影響範圍與組成查詢</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+
+<body>
+
+<div class="page-wrapper">
+
+    <div class="search-container">
+        <h2>🔍 SBOM 雙向查詢系統</h2>
+
+        <div class="search-box">
+            <select id="searchType" class="search-type-select">
+                <option value="component">按套件名稱查詢</option>
+                <option value="application">按專案名稱查詢</option>
+            </select>
+
+            <input type="text" id="searchInput" class="search-input" placeholder="請輸入關鍵字..." onkeypress="handleKeyPress(event)">
+            <button onclick="performSearch()" class="search-btn">立即查詢</button>
+        </div>
+    </div>
+
+    <div class="result-container">
+        <div id="resultArea">
+            <div class="no-result">請選擇查詢模式並輸入關鍵字進行搜尋。</div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // 資安防護：跳脫 HTML 特殊字元
+    function escapeHTML(str) {
+        if (!str) return '';
+        return String(str).replace(/[&<>'"]/g, function(tag) {
+            const charsToReplace = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                "'": '&#39;',
+                '"': '&quot;'
+            };
+            return charsToReplace[tag] || tag;
+        });
+    }
+
+    // 監聽 Enter 鍵
+    function handleKeyPress(event) {
+        if (event.key === 'Enter') performSearch();
+    }
+
+    // 執行搜尋
+    function performSearch() {
+        const type = document.getElementById('searchType').value;
+        const keyword = document.getElementById('searchInput').value.trim();
+        const resultArea = document.getElementById('resultArea');
+
+        if (!keyword) {
+            alert('請輸入關鍵字！');
+            return;
+        }
+
+        resultArea.innerHTML = '<div class="loading">正在為您檢索資料，請稍候...</div>';
+
+        fetch(`/api/v1/bom/search?type=${type}&keyword=${encodeURIComponent(keyword)}`)
+            .then(response => {
+                if (!response.ok) throw new Error('伺服器回應錯誤');
+                return response.json();
+            })
+            .then(data => {
+                if (data.length === 0) {
+                    resultArea.innerHTML = `<div class="no-result">找不到與「${escapeHTML(keyword)}」相符的結果。</div>`;
+                    return;
+                }
+
+                if (type === 'application') {
+                    renderApplicationView(data, resultArea);
+                } else {
+                    renderComponentView(data, resultArea);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                resultArea.innerHTML = '<div class="no-result" style="color:#dc2626;">❌ 查詢失敗，請檢查網路狀態或聯絡管理員。</div>';
+            });
+    }
+
+    // 處理手動折疊的控制函數 (用於 Component 模式的 Table 行折疊)
+    function toggleRow(rowId, iconId) {
+        const detailRow = document.getElementById(rowId);
+        const icon = document.getElementById(iconId);
+
+        if (detailRow.style.display === 'none') {
+            detailRow.style.display = 'table-row';
+            icon.classList.add('open');
+        } else {
+            detailRow.style.display = 'none';
+            icon.classList.remove('open');
+        }
+    }
+
+    // 💡 模式 1 (已更新)：依專案名稱查詢，加入掃描時間顯示
+    function renderApplicationView(data, container) {
+
+        // 1. 先將平面資料依據 Gitlab Project ID 分組
+        const projects = {};
+        data.forEach(item => {
+            const pid = item.gitlabProjectId;
+            if (!projects[pid]) {
+                // 💡 在初始化專案物件時，順便存下時間 (timestamp)
+                projects[pid] = {
+                    direct: [],
+                    transitive: [],
+                    timestamp: item.timestamp
+                };
+            }
+            if (item.isTransitive) {
+                projects[pid].transitive.push(item);
+            } else {
+                projects[pid].direct.push(item);
+            }
+        });
+
+        let html = `
+            <h3 style="margin-top: 0; margin-bottom: 20px; color: #111827;">專案套件依賴關係</h3>
+            <div class="tree-container">
+        `;
+
+        // 2. 建立樹狀結構
+        for (const [pid, groups] of Object.entries(projects)) {
+            const totalCount = groups.direct.length + groups.transitive.length;
+
+            // 💡 處理時間格式化 (與模式 2 保持一致)
+            let dateStr = '-';
+            if (groups.timestamp) {
+                dateStr = new Date(groups.timestamp).toLocaleString('zh-TW', {
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit'
+                });
+            }
+
+            // 專案根節點 (將時間加入到 badge 內或後方)
+            html += `
+                <details class="tree-node project-node" open>
+                    <summary class="tree-summary project-summary">
+                        <span class="folder-icon">📁</span>
+                        <strong class="project-name">${escapeHTML(pid)}</strong>
+                        <span class="tree-badge">
+                            掃描時間：${dateStr} | 共 ${totalCount} 個套件
+                        </span>
+                    </summary>
+                    <div class="tree-children">
+            `;
+
+            // 直接引入資料夾
+            if (groups.direct.length > 0) {
+                html += `
+                    <details class="tree-node folder-node direct-folder" open>
+                        <summary class="tree-summary folder-summary">
+                            <span class="folder-icon">📂</span>
+                            <strong>直接引入 (Direct Dependencies)</strong>
+                            <span class="tree-badge badge-green">${groups.direct.length} 個</span>
+                        </summary>
+                        <div class="tree-children table-wrapper">
+                            ${generateTreeTable(groups.direct)}
+                        </div>
+                    </details>
+                `;
+            }
+
+            // 間接依賴資料夾
+            if (groups.transitive.length > 0) {
+                html += `
+                    <details class="tree-node folder-node transitive-folder">
+                        <summary class="tree-summary folder-summary">
+                            <span class="folder-icon">📂</span>
+                            <strong>間接依賴 (Transitive Dependencies)</strong>
+                            <span class="tree-badge badge-yellow">${groups.transitive.length} 個</span>
+                        </summary>
+                        <div class="tree-children table-wrapper">
+                            ${generateTreeTable(groups.transitive)}
+                        </div>
+                    </details>
+                `;
+            }
+
+            html += `
+                    </div>
+                </details>
+            `;
+        }
+
+        html += `</div>`;
+        container.innerHTML = html;
+    }
+
+    // 輔助函數：用來產生樹狀結構底下的明細表格
+    function generateTreeTable(components) {
+        let tableHtml = `
+            <table class="detail-table">
+                <thead>
+                    <tr>
+                        <th>套件名稱 (Component)</th>
+                        <th>版本</th>
+                        <th>PURL (特徵)</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        components.forEach(comp => {
+            tableHtml += `
+                <tr>
+                    <td><strong>${escapeHTML(comp.componentName)}</strong></td>
+                    <td>${escapeHTML(comp.componentVersion) || '-'}</td>
+                    <td><div class="purl-text">${escapeHTML(comp.purl) || '-'}</div></td>
+                </tr>
+            `;
+        });
+        tableHtml += `</tbody></table>`;
+        return tableHtml;
+    }
+
+    // 模式 2 (保持不變)：按套件名稱查詢，列出受影響專案
+    function renderComponentView(data, container) {
+        const groupedData = {};
+        data.forEach(item => {
+            const pid = item.gitlabProjectId;
+            if (!groupedData[pid]) {
+                groupedData[pid] = {
+                    gitlabGroupId: item.gitlabGroupId,
+                    timestamp: item.timestamp,
+                    components: []
+                };
+            }
+            groupedData[pid].components.push({
+                name: item.componentName,
+                version: item.componentVersion
+            });
+        });
+
+        let html = `
+            <h3 style="margin-top: 0; margin-bottom: 20px; color: #111827;">受影響專案清單</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px; text-align: center;"></th>
+                        <th>受影響專案 (Gitlab Project ID)</th>
+                        <th>匹配套件數</th>
+                        <th>Gitlab Group</th>
+                        <th>最後掃描時間</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        let index = 0;
+        for (const [projectId, info] of Object.entries(groupedData)) {
+            const detailRowId = `detail-${index}`;
+            const iconId = `icon-${index}`;
+
+            let dateStr = '-';
+            if (info.timestamp) {
+                dateStr = new Date(info.timestamp).toLocaleString('zh-TW', {
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit'
+                });
+            }
+
+            html += `
+                <tr class="clickable-row" onclick="toggleRow('${detailRowId}', '${iconId}')">
+                    <td style="text-align: center;"><span id="${iconId}" class="toggle-icon">▶</span></td>
+                    <td><strong style="color:var(--primary-color)">${escapeHTML(projectId)}</strong></td>
+                    <td><span class="dependency-tag" style="background:#e0e7ff; color:#3730a3; border: 1px solid #c7d2fe;">${info.components.length} 個套件</span></td>
+                    <td>${escapeHTML(info.gitlabGroupId)}</td>
+                    <td style="color: var(--text-muted); font-size: 13px;">${dateStr}</td>
+                </tr>
+            `;
+
+            html += `
+                <tr id="${detailRowId}" class="detail-row" style="display: none;">
+                    <td colspan="5">
+                        <table class="detail-table">
+                            <thead>
+                                <tr>
+                                    <th>命中套件名稱 (Component)</th>
+                                    <th>使用版本</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+
+            info.components.forEach(comp => {
+                html += `
+                                <tr>
+                                    <td><strong>${escapeHTML(comp.name)}</strong></td>
+                                    <td>${escapeHTML(comp.version) || '-'}</td>
+                                </tr>
+                `;
+            });
+
+            html += `
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+            `;
+            index++;
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+</script>
+</body>
+</html>

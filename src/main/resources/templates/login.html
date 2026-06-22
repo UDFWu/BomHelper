@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-TW" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>登入 - SBOM 管理系統</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        }
+        .login-card {
+            width: 380px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+            padding: 40px 32px 32px;
+        }
+        .brand {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .brand h1 {
+            color: #2c3e50;
+            font-size: 22px;
+            letter-spacing: 1px;
+        }
+        .brand p {
+            color: #7f8c8d;
+            font-size: 13px;
+            margin-top: 6px;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            color: #34495e;
+            margin-bottom: 6px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 14px;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .form-group input:focus {
+            border-color: #2c80b4;
+            box-shadow: 0 0 0 3px rgba(44, 128, 180, 0.15);
+        }
+        .btn-login {
+            width: 100%;
+            padding: 11px 14px;
+            background-color: #2c80b4;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-top: 6px;
+        }
+        .btn-login:hover { background-color: #226691; }
+        .alert {
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+        .alert-error { background-color: #fdecea; color: #b3261e; border: 1px solid #f5c2c0; }
+        .alert-info { background-color: #e7f4ff; color: #0c5497; border: 1px solid #b6daff; }
+        .hint {
+            font-size: 12px;
+            color: #7f8c8d;
+            text-align: center;
+            margin-top: 18px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+<div class="login-card">
+    <div class="brand">
+        <h1>🛡️ BOM Helper</h1>
+        <p>請使用您的 GitLab 帳號登入</p>
+    </div>
+
+    <div th:if="${errorMessage}" class="alert alert-error" th:text="${errorMessage}"></div>
+    <div th:if="${logoutMessage}" class="alert alert-info" th:text="${logoutMessage}"></div>
+
+    <form th:action="@{/login}" method="post" autocomplete="off">
+        <div class="form-group">
+            <label for="username">GitLab 帳號</label>
+            <input type="text" id="username" name="username" required autofocus>
+        </div>
+        <div class="form-group">
+            <label for="password">GitLab 密碼</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn-login">登入</button>
+    </form>
+
+    <div class="hint">
+        系統將透過公司 GitLab Server 驗證您的身份，<br>
+        並依您所屬的 Group / Project 權限顯示對應的弱點掃描資料。
+    </div>
+</div>
+</body>
+</html>

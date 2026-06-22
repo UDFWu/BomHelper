@@ -1,0 +1,508 @@
+/* ==========================================
+   Variables (全局變數)
+========================================== */
+:root {
+    /* 色彩系統 */
+    --primary-color: #2563eb;
+    --primary-hover: #1d4ed8;
+    --text-main: #1f2937;
+    --text-muted: #6b7280;
+    --bg-gradient-start: #f5f7fa;
+    --bg-gradient-end: #e4ecf5;
+
+    /* UI 尺寸與圓角 */
+    --radius-lg: 20px;
+    --radius-md: 12px;
+    --input-height: 48px;
+}
+
+/* ==========================================
+   Global
+========================================== */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: "Inter", "Noto Sans TC", sans-serif;
+    background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+    color: var(--text-main);
+    min-height: 100vh;
+}
+
+/* ==========================================
+   Layout
+========================================== */
+.page-wrapper {
+    width: 95%;
+    max-width: 1400px;
+    margin: 40px auto;
+    animation: fadeIn 0.6s ease-out;
+}
+
+/* ==========================================
+   Card
+========================================== */
+.search-container,
+.result-container {
+    background: rgba(255, 255, 255, 0.85);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    padding: 30px;
+    margin-bottom: 25px;
+}
+
+/* ==========================================
+   Title
+========================================== */
+.search-container h2 {
+    margin-top: 0;
+    margin-bottom: 24px;
+    font-size: 28px;
+    font-weight: 700;
+    color: #111827;
+}
+
+/* ==========================================
+   Search Area
+========================================== */
+.search-box {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.search-type-select,
+.search-input {
+    height: var(--input-height);
+    border-radius: var(--radius-md);
+    border: 1px solid #d1d5db;
+    background: white;
+    padding: 0 16px;
+    font-size: 15px;
+    transition: all 0.2s ease;
+}
+
+.search-type-select {
+    min-width: 200px;
+    cursor: pointer;
+}
+
+.search-input {
+    flex: 1;
+    min-width: 300px;
+}
+
+.search-input:focus,
+.search-type-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}
+
+.search-btn {
+    height: var(--input-height);
+    padding: 0 28px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.search-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+}
+
+.search-btn:active {
+    transform: scale(0.98);
+}
+
+/* ==========================================
+   Result Container & Scrollbar
+========================================== */
+.result-container {
+    overflow-x: auto;
+}
+
+.result-container::-webkit-scrollbar { height: 8px; }
+.result-container::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.03); border-radius: 4px; }
+.result-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.result-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ==========================================
+   Table (主要用於 Component 查詢模式)
+========================================== */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    min-width: 900px;
+    animation: fadeIn 0.4s ease-out;
+}
+
+thead {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+th {
+    background: #f3f4f6;
+    color: #374151;
+    text-align: left;
+    padding: 14px 16px;
+    font-size: 14px;
+    font-weight: 700;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+th:first-child { border-top-left-radius: 8px; }
+th:last-child { border-top-right-radius: 8px; }
+
+td {
+    padding: 14px 16px;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: top;
+    font-size: 14px;
+    transition: background-color 0.15s ease;
+}
+
+tr:hover td { background: rgba(37, 99, 235, 0.04); }
+
+/* 列折疊 */
+.clickable-row { cursor: pointer; transition: background-color 0.2s; }
+.clickable-row:hover td { background-color: #f1f5f9 !important; }
+.toggle-icon { display: inline-block; transition: transform 0.3s ease; color: var(--text-muted); font-size: 12px; }
+.toggle-icon.open { transform: rotate(90deg); }
+
+.detail-row td { background-color: #f8fafc; padding: 15px 20px 20px 50px !important; }
+.detail-row:hover td { background-color: #f8fafc !important; }
+
+/* 子表格 */
+.detail-table {
+    width: 100%;
+    margin: 0;
+    min-width: auto;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+.detail-table th {
+    background: #f1f5f9;
+    padding: 10px 14px;
+    font-size: 13px;
+    border-bottom: 1px solid #e2e8f0;
+    border-radius: 0;
+}
+.detail-table td {
+    padding: 10px 14px;
+    font-size: 13px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+/* ==========================================
+   Tree View (樹狀階層結構 - 用於 Application 查詢)
+========================================== */
+.tree-container {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.tree-node {
+    margin-bottom: 4px;
+}
+
+.tree-summary {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background-color: #f8fafc;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 15px;
+    transition: background-color 0.2s, border-color 0.2s;
+    user-select: none;
+}
+
+/* 隱藏預設的三角形箭頭，改用自定義樣式如果需要 */
+.tree-summary::-webkit-details-marker {
+    display: none;
+}
+
+.tree-summary:hover {
+    background-color: #f1f5f9;
+}
+
+.tree-node[open] > .tree-summary {
+    border-color: #cbd5e1;
+    background-color: #f1f5f9;
+}
+
+.project-summary {
+    background-color: #eff6ff; /* 專案層級用淡淡的藍色區分 */
+}
+
+.project-summary:hover, .tree-node[open] > .project-summary {
+    background-color: #dbeafe;
+    border-color: #bfdbfe;
+}
+
+.folder-icon {
+    margin-right: 10px;
+    font-size: 18px;
+}
+
+.project-name {
+    color: var(--primary-color);
+    font-size: 16px;
+    margin-right: 15px;
+}
+
+.tree-badge {
+    margin-left: auto; /* 將標籤推到最右邊 */
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.badge-green {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.badge-yellow {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+/* 樹狀結構的子內容縮排 */
+.tree-children {
+    padding-left: 25px; /* 縮排距離 */
+    margin-top: 8px;
+    border-left: 2px dashed #e2e8f0; /* 左側虛線，增加視覺引導 */
+    margin-left: 24px;
+    padding-bottom: 8px;
+}
+
+.table-wrapper {
+    margin-top: 10px;
+    padding-right: 15px;
+    border-left: none; /* 表格層級不顯示虛線 */
+}
+
+/* ==========================================
+   PURL
+========================================== */
+.purl-text {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    color: var(--text-muted);
+    word-break: break-all;
+    background: #f9fafb;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid #f3f4f6;
+}
+
+/* ==========================================
+   Tags
+========================================== */
+.dependency-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    background: #e0e7ff;
+    color: #3730a3;
+    border: 1px solid #c7d2fe;
+}
+
+/* ==========================================
+   Empty State & Loading
+========================================== */
+.no-result {
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 16px;
+    animation: fadeIn 0.4s ease-out;
+}
+
+.loading {
+    text-align: center;
+    padding: 60px;
+}
+
+.loading::after {
+    content: "";
+    width: 40px;
+    height: 40px;
+    border: 3px solid #dbeafe;
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    display: inline-block;
+    animation: spin 0.8s linear infinite;
+}
+
+/* ==========================================
+   Animations
+========================================== */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ==========================================
+   Responsive
+========================================== */
+@media (max-width: 768px) {
+    .page-wrapper { width: 100%; margin: 0; padding: 15px; }
+    .search-box { flex-direction: column; }
+    .search-input, .search-type-select, .search-btn { width: 100%; min-width: 100%; }
+    .search-container, .result-container { padding: 20px; border-radius: 16px; }
+    .search-container h2 { font-size: 22px; }
+    .tree-children { padding-left: 10px; margin-left: 10px; } /* 手機版縮小縮排 */
+}
+
+/* ==========================================
+   Upload Page (上傳頁面專屬樣式)
+========================================== */
+.upload-container {
+    background: rgba(255, 255, 255, 0.85);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    padding: 40px;
+    margin: 40px auto;
+    max-width: 600px; /* 讓上傳區塊比較集中、窄一點 */
+    text-align: center;
+}
+
+.upload-container h2 {
+    margin-top: 0;
+    margin-bottom: 30px;
+    font-size: 28px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.file-input-wrapper {
+    margin-bottom: 24px;
+    text-align: left;
+}
+
+.file-input-wrapper label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.upload-input {
+    width: 100%;
+    height: var(--input-height);
+    border-radius: var(--radius-md);
+    border: 1px solid #d1d5db;
+    background: white;
+    padding: 0 16px;
+    font-size: 15px;
+    transition: all 0.2s ease;
+}
+
+.upload-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}
+
+/* 隱藏原生醜醜的檔案上傳按鈕 */
+input[type="file"] {
+    display: none;
+}
+
+/* 虛線拖曳/點擊區塊 */
+.custom-file-upload {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed #cbd5e1;
+    border-radius: var(--radius-md);
+    padding: 40px 20px !important; /* 蓋掉前面的 label 預設 */
+    cursor: pointer;
+    background: #f8fafc;
+    color: var(--primary-color) !important;
+    font-weight: 600;
+    font-size: 16px;
+    transition: all 0.2s ease;
+    margin-bottom: 10px !important;
+}
+
+.custom-file-upload:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+}
+
+#file-name {
+    font-size: 14px;
+    color: var(--text-muted);
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* 上傳按鈕 */
+.submit-btn {
+    width: 100%;
+    height: var(--input-height);
+    border: none;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+}
+
+.submit-btn:disabled {
+    background: #94a3b8;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* 狀態訊息提示 */
+#status-message {
+    margin-top: 20px;
+    padding: 15px;
+    border-radius: var(--radius-md);
+    display: none;
+    font-size: 14px;
+    font-weight: 600;
+    animation: fadeIn 0.3s ease-out;
+}
+.success { background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+.error { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
