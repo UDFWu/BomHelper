@@ -112,11 +112,12 @@
         data.forEach(item => {
             const pid = item.gitlabProjectId;
             if (!projects[pid]) {
-                // 💡 在初始化專案物件時，順便存下時間 (timestamp)
+                // 💡 在初始化專案物件時，順便存下時間 (timestamp) 與 上傳者 (importedBy)
                 projects[pid] = {
                     direct: [],
                     transitive: [],
-                    timestamp: item.timestamp
+                    timestamp: item.timestamp,
+                    importedBy: item.importedBy
                 };
             }
             if (item.isTransitive) {
@@ -144,14 +145,17 @@
                 });
             }
 
-            // 專案根節點 (將時間加入到 badge 內或後方)
+            // 上傳者
+            const importedByStr = groups.importedBy ? escapeHTML(groups.importedBy) : '-';
+
+            // 專案根節點 (將時間 / 上傳者加入到 badge 內或後方)
             html += `
                 <details class="tree-node project-node" open>
                     <summary class="tree-summary project-summary">
                         <span class="folder-icon">📁</span>
                         <strong class="project-name">${escapeHTML(pid)}</strong>
                         <span class="tree-badge">
-                            掃描時間：${dateStr} | 共 ${totalCount} 個套件
+                            掃描時間：${dateStr} | 上傳者：${importedByStr} | 共 ${totalCount} 個套件
                         </span>
                     </summary>
                     <div class="tree-children">
@@ -234,6 +238,7 @@
                 groupedData[pid] = {
                     gitlabGroupId: item.gitlabGroupId,
                     timestamp: item.timestamp,
+                    importedBy: item.importedBy, // 💡 上傳者
                     components: []
                 };
             }
@@ -249,10 +254,11 @@
                 <thead>
                     <tr>
                         <th style="width: 40px; text-align: center;"></th>
-                        <th>受影響專案 (Gitlab Project ID)</th>
+                        <th>Gitlab Project</th>
                         <th>匹配套件數</th>
                         <th>Gitlab Group</th>
                         <th>最後掃描時間</th>
+                        <th>上傳者</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -278,12 +284,13 @@
                     <td><span class="dependency-tag" style="background:#e0e7ff; color:#3730a3; border: 1px solid #c7d2fe;">${info.components.length} 個套件</span></td>
                     <td>${escapeHTML(info.gitlabGroupId)}</td>
                     <td style="color: var(--text-muted); font-size: 13px;">${dateStr}</td>
+                    <td style="color: var(--text-muted); font-size: 13px;">${escapeHTML(info.importedBy) || '-'}</td>
                 </tr>
             `;
 
             html += `
                 <tr id="${detailRowId}" class="detail-row" style="display: none;">
-                    <td colspan="5">
+                    <td colspan="6">
                         <table class="detail-table">
                             <thead>
                                 <tr>

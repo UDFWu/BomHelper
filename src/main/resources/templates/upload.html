@@ -16,9 +16,21 @@
             <!-- importedBy 不再寫死，後端會自動使用目前登入的 GitLab 帳號 -->
 
             <div class="file-input-wrapper">
-                <label for="gitlabGroupId">GitLab Group ID：</label>
-                <input type="text" id="gitlabGroupId" name="gitlabGroupId" required
-                       placeholder="例如：ncbs_mid" class="upload-input">
+                <label for="gitlabGroupId">GitLab Group：</label>
+                <!-- 下拉選單：列出登入者在 GitLab 上所屬的 Group。
+                     value 使用 group.path（與資料庫中 BomReport.gitlabGroupId 對應） -->
+                <select id="gitlabGroupId" name="gitlabGroupId" required class="upload-input">
+                    <option value="" disabled selected>-- 請選擇要上傳的 GitLab Group --</option>
+                    <option th:each="g : ${currentUser != null ? currentUser.groups : {}}"
+                            th:value="${g.path}"
+                            th:text="${g.fullPath != null ? g.fullPath : g.name}">
+                    </option>
+                </select>
+                <div th:if="${currentUser == null or #lists.isEmpty(currentUser.groups)}"
+                     style="color:#b3261e; font-size:13px; margin-top:6px;">
+                    您目前沒有任何 GitLab Group 權限，無法上傳報告。
+                    請聯絡 GitLab 管理員把您加入對應的 Group 後重新登入。
+                </div>
             </div>
 
             <div class="file-input-wrapper">

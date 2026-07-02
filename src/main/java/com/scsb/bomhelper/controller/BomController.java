@@ -133,6 +133,7 @@ public class BomController {
                 map.put("gitlabGroupId", comp.getBomReport().getGitlabGroupId());
                 map.put("gitlabProjectId", comp.getBomReport().getGitlabProjectId());
                 map.put("timestamp", comp.getBomReport().getTimestamp());
+                map.put("importedBy", comp.getBomReport().getImportedBy());
 
                 // 💡 簡單判斷依賴關係：如果該套件在 Dependency 表中是別人的 Child，則標記為間接依賴
                 boolean isTransitive = bomDependencyRepository.checkIsTransitive(
