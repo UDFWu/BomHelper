@@ -7,36 +7,36 @@ import java.util.Date;
 import java.util.List;
 
 @Entity
-@Table(name = "\"BomReport\"")
+@Table(name = "BomReport")
 public class BomReport {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "\"Id\"")
+    @Column(name = "Id")
     private Integer id;
 
-    @Column(name = "\"SerialNumber\"", length = 100)
+    @Column(name = "SerialNumber", length = 100)
     private String serialNumber;
 
-    @Column(name = "\"ScanId\"", length = 100, nullable = false, unique = true)
+    @Column(name = "ScanId", length = 100, nullable = false, unique = true)
     private String scanId;
 
-    @Column(name = "\"GitlabGroupId\"", length = 100, nullable = false)
+    @Column(name = "GitlabGroupId", length = 100, nullable = false)
     private String gitlabGroupId;
 
-    @Column(name = "\"GitlabProjectId\"", length = 100, nullable = false)
+    @Column(name = "GitlabProjectId", length = 100, nullable = false)
     private String gitlabProjectId;
 
-    @Column(name = "\"Timestamp\"")
+    @Column(name = "Timestamp")
     private Date timestamp;
 
-    @Column(name = "\"RawXmlContent\"", columnDefinition = "xml")
+    @Column(name = "RawXmlContent")
     private String rawXmlContent;
 
-    @Column(name = "\"ImportedBy\"", length = 100, nullable = false)
+    @Column(name = "ImportedBy", length = 100, nullable = false)
     private String importedBy;
 
-    @Column(name = "\"ImportDate\"", insertable = false, updatable = false)
+    @Column(name = "ImportDate", insertable = false, updatable = false)
     private Date importDate;
 
     // ==========================================

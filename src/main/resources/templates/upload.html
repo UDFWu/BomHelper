@@ -2,6 +2,7 @@
 <html lang="zh-TW" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
+    <meta name="context-path" th:content="@{/}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SBOM 檔案上傳系統</title>
     <link rel="stylesheet" th:href="@{/css/style.css}">
@@ -49,6 +50,14 @@
 </div>
 
 <script>
+    const CONTEXT_PATH_RAW = document
+        .querySelector('meta[name="context-path"]')
+        ?.getAttribute("content") || "";
+
+    const API_BASE = CONTEXT_PATH_RAW.endsWith("/")
+        ? CONTEXT_PATH_RAW.slice(0, -1)
+        : CONTEXT_PATH_RAW;
+
     const fileUpload = document.getElementById('file-upload');
     const fileNameDisplay = document.getElementById('file-name');
     const uploadForm = document.getElementById('uploadForm');
@@ -69,7 +78,7 @@
 
         const formData = new FormData(uploadForm);
 
-        fetch('/api/v1/bom/upload', {
+        fetch(API_BASE + '/api/v1/bom/upload', {
             method: 'POST',
             body: formData
         })

@@ -2,6 +2,7 @@
 <html lang="zh-TW" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
+    <meta name="context-path" th:content="@{/}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SBOM 影響範圍與組成查詢</title>
     <link rel="stylesheet" th:href="@{/css/style.css}">
@@ -34,6 +35,14 @@
 </div>
 
 <script>
+    const CONTEXT_PATH_RAW = document
+        .querySelector('meta[name="context-path"]')
+        ?.getAttribute("content") || "";
+
+    const API_BASE = CONTEXT_PATH_RAW.endsWith("/")
+        ? CONTEXT_PATH_RAW.slice(0, -1)
+        : CONTEXT_PATH_RAW;
+
     // 資安防護：跳脫 HTML 特殊字元
     function escapeHTML(str) {
         if (!str) return '';
@@ -67,7 +76,7 @@
 
         resultArea.innerHTML = '<div class="loading">正在為您檢索資料，請稍候...</div>';
 
-        fetch(`/api/v1/bom/search?type=${type}&keyword=${encodeURIComponent(keyword)}`)
+        fetch(API_BASE + `/api/v1/bom/search?type=${type}&keyword=${encodeURIComponent(keyword)}`)
             .then(response => {
                 if (!response.ok) throw new Error('伺服器回應錯誤');
                 return response.json();

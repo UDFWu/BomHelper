@@ -3,25 +3,25 @@ package com.scsb.bomhelper.entity;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "\"BomDependency\"")
+@Table(name = "BomDependency")
 public class BomDependency {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "\"Id\"")
+    @Column(name = "Id")
     private Integer id;
 
     // Many-to-One: link to BomReport via ScanId
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "\"ScanId\"", referencedColumnName = "\"ScanId\"", nullable = false)
+    @JoinColumn(name = "ScanId", referencedColumnName = "ScanId", nullable = false)
     private BomReport bomReport;
 
     // bom-ref of the parent component (depender)
-    @Column(name = "\"ParentRef\"", length = 1000, nullable = false)
+    @Column(name = "ParentRef", length = 1000, nullable = false)
     private String parentRef;
 
     // bom-ref of the child component (dependee)
-    @Column(name = "\"ChildRef\"", length = 1000, nullable = false)
+    @Column(name = "ChildRef", length = 1000, nullable = false)
     private String childRef;
 
     public Integer getId() { return id; }

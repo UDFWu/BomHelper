@@ -3,32 +3,32 @@ package com.scsb.bomhelper.entity;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "\"BomComponent\"")
+@Table(name = "BomComponent")
 public class BomComponent {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "\"Id\"")
+    @Column(name = "Id")
     private Integer id;
 
     // Many-to-One: link to BomReport via ScanId
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "\"ScanId\"", referencedColumnName = "\"ScanId\"", nullable = false)
+    @JoinColumn(name = "ScanId", referencedColumnName = "ScanId", nullable = false)
     private BomReport bomReport;
 
-    @Column(name = "\"GroupName\"", length = 255)
+    @Column(name = "GroupName", length = 255)
     private String groupName;
 
-    @Column(name = "\"Name\"", length = 255, nullable = false)
+    @Column(name = "Name", length = 255, nullable = false)
     private String name;
 
-    @Column(name = "\"Version\"", length = 100)
+    @Column(name = "Version", length = 100)
     private String version;
 
-    @Column(name = "\"Purl\"", length = 1000, columnDefinition = "varchar(1000)")
+    @Column(name = "Purl", length = 1000, columnDefinition = "varchar(1000)")
     private String purl;
 
-    @Column(name = "\"BomRef\"", length = 1000, columnDefinition = "varchar(1000)")
+    @Column(name = "BomRef", length = 1000, columnDefinition = "varchar(1000)")
     private String bomRef;
 
     public Integer getId() { return id; }
