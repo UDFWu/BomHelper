@@ -21,6 +21,14 @@
             </select>
 
             <input type="text" id="searchInput" class="search-input" placeholder="請輸入關鍵字..." onkeypress="handleKeyPress(event)">
+            <select id="versionOperator" class="search-type-select version-operator" aria-label="版本比較條件">
+                <option value="=">版本等於</option>
+                <option value=">">版本大於</option>
+                <option value=">=">版本大於等於</option>
+                <option value="<">版本小於</option>
+                <option value="<=">版本小於等於</option>
+            </select>
+            <input type="text" id="versionInput" class="search-input version-input" placeholder="套件版本（選填，例如 2.1.0）" onkeypress="handleKeyPress(event)">
             <button onclick="performSearch()" class="search-btn">立即查詢</button>
         </div>
     </div>
@@ -54,10 +62,26 @@
         if (event.key === 'Enter') performSearch();
     }
 
+    // 專案名稱查詢不需要版本條件，避免造成使用者誤解
+    function updateVersionFilterVisibility() {
+        const isComponentSearch = document.getElementById('searchType').value === 'component';
+        const versionInput = document.getElementById('versionInput');
+        const versionOperator = document.getElementById('versionOperator');
+        versionInput.hidden = !isComponentSearch;
+        versionInput.disabled = !isComponentSearch;
+        versionOperator.hidden = !isComponentSearch;
+        versionOperator.disabled = !isComponentSearch;
+        if (!isComponentSearch) versionInput.value = '';
+    }
+
+    document.getElementById('searchType').addEventListener('change', updateVersionFilterVisibility);
+
     // 執行搜尋
     function performSearch() {
         const type = document.getElementById('searchType').value;
         const keyword = document.getElementById('searchInput').value.trim();
+        const version = document.getElementById('versionInput').value.trim();
+        const versionOperator = document.getElementById('versionOperator').value;
         const resultArea = document.getElementById('resultArea');
 
         if (!keyword) {
@@ -67,14 +91,23 @@
 
         resultArea.innerHTML = '<div class="loading">正在為您檢索資料，請稍候...</div>';
 
-        fetch(`/api/v1/bom/search?type=${type}&keyword=${encodeURIComponent(keyword)}`)
+        const searchParams = new URLSearchParams({ type, keyword });
+        if (type === 'component' && version) {
+            searchParams.set('version', version);
+            searchParams.set('versionOperator', versionOperator);
+        }
+
+        fetch(`/api/v1/bom/search?${searchParams.toString()}`)
             .then(response => {
                 if (!response.ok) throw new Error('伺服器回應錯誤');
                 return response.json();
             })
             .then(data => {
                 if (data.length === 0) {
-                    resultArea.innerHTML = `<div class="no-result">找不到與「${escapeHTML(keyword)}」相符的結果。</div>`;
+                    const noResultMessage = type === 'component' && version
+                        ? `找不到套件名稱「${escapeHTML(keyword)}」且版本${escapeHTML(versionOperator)}「${escapeHTML(version)}」的結果。`
+                        : `找不到與「${escapeHTML(keyword)}」相符的結果。`;
+                    resultArea.innerHTML = `<div class="no-result">${noResultMessage}</div>`;
                     return;
                 }
 
@@ -104,6 +137,42 @@
         }
     }
 
+    // 依 CVSS 分數回傳符合風險等級的文字樣式；每個元件顯示其最高弱點分數。
+    function formatVulnerabilityScore(score) {
+        const value = Number(score);
+        const safeScore = Number.isFinite(value) ? Math.min(10, Math.max(0, value)) : 0;
+        let level = 'None';
+        let cssClass = 'score-none';
+        if (safeScore >= 9) {
+            level = 'Critical';
+            cssClass = 'score-critical';
+        } else if (safeScore >= 7) {
+            level = 'High';
+            cssClass = 'score-high';
+        } else if (safeScore >= 4) {
+            level = 'Medium';
+            cssClass = 'score-medium';
+        } else if (safeScore > 0) {
+            level = 'Low';
+            cssClass = 'score-low';
+        }
+        return `<span class="vulnerability-score ${cssClass}" title="${level}">${safeScore.toFixed(1)}</span>`;
+    }
+
+    function getVulnerabilityScore(score) {
+        const value = Number(score);
+        return Number.isFinite(value) ? Math.min(10, Math.max(0, value)) : 0;
+    }
+
+    // Owner 會由 API 排在清單最前方，Maintainer 依姓名排序接續顯示。
+    function renderSupervisorSelect(supervisors) {
+        if (!Array.isArray(supervisors) || supervisors.length === 0) return '-';
+        const options = supervisors.map((supervisor, index) =>
+            `<option value="${escapeHTML(supervisor)}"${index === 0 ? ' selected' : ''}>${escapeHTML(supervisor)}</option>`
+        ).join('');
+        return `<select class="supervisor-select" aria-label="GitLab Group 主管" onclick="event.stopPropagation()">${options}</select>`;
+    }
+
     // 💡 模式 1 (已更新)：依專案名稱查詢，加入掃描時間顯示
     function renderApplicationView(data, container) {
 
@@ -117,9 +186,15 @@
                     direct: [],
                     transitive: [],
                     timestamp: item.timestamp,
-                    importedBy: item.importedBy
+                    importedBy: item.importedBy,
+                    supervisors: item.supervisors,
+                    maxVulnerabilityScore: 0
                 };
             }
+            projects[pid].maxVulnerabilityScore = Math.max(
+                projects[pid].maxVulnerabilityScore,
+                getVulnerabilityScore(item.vulnerabilityScore)
+            );
             if (item.isTransitive) {
                 projects[pid].transitive.push(item);
             } else {
@@ -133,7 +208,9 @@
         `;
 
         // 2. 建立樹狀結構
-        for (const [pid, groups] of Object.entries(projects)) {
+        const sortedProjects = Object.entries(projects)
+            .sort(([, left], [, right]) => right.maxVulnerabilityScore - left.maxVulnerabilityScore);
+        for (const [pid, groups] of sortedProjects) {
             const totalCount = groups.direct.length + groups.transitive.length;
 
             // 💡 處理時間格式化 (與模式 2 保持一致)
@@ -157,6 +234,7 @@
                         <span class="tree-badge">
                             掃描時間：${dateStr} | 上傳者：${importedByStr} | 共 ${totalCount} 個套件
                         </span>
+                        <span class="supervisor-field">主管：${renderSupervisorSelect(groups.supervisors)}</span>
                     </summary>
                     <div class="tree-children">
             `;
@@ -205,22 +283,26 @@
 
     // 輔助函數：用來產生樹狀結構底下的明細表格
     function generateTreeTable(components) {
+        const sortedComponents = [...components]
+            .sort((left, right) => getVulnerabilityScore(right.vulnerabilityScore) - getVulnerabilityScore(left.vulnerabilityScore));
         let tableHtml = `
             <table class="detail-table">
                 <thead>
                     <tr>
                         <th>套件名稱 (Component)</th>
                         <th>版本</th>
+                        <th>最高弱點分數</th>
                         <th>PURL (特徵)</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
-        components.forEach(comp => {
+        sortedComponents.forEach(comp => {
             tableHtml += `
                 <tr>
                     <td><strong>${escapeHTML(comp.componentName)}</strong></td>
                     <td>${escapeHTML(comp.componentVersion) || '-'}</td>
+                    <td>${formatVulnerabilityScore(comp.vulnerabilityScore)}</td>
                     <td><div class="purl-text">${escapeHTML(comp.purl) || '-'}</div></td>
                 </tr>
             `;
@@ -239,12 +321,19 @@
                     gitlabGroupId: item.gitlabGroupId,
                     timestamp: item.timestamp,
                     importedBy: item.importedBy, // 💡 上傳者
+                    supervisors: item.supervisors,
+                    maxVulnerabilityScore: 0,
                     components: []
                 };
             }
+            groupedData[pid].maxVulnerabilityScore = Math.max(
+                groupedData[pid].maxVulnerabilityScore,
+                getVulnerabilityScore(item.vulnerabilityScore)
+            );
             groupedData[pid].components.push({
                 name: item.componentName,
-                version: item.componentVersion
+                version: item.componentVersion,
+                vulnerabilityScore: item.vulnerabilityScore
             });
         });
 
@@ -259,13 +348,16 @@
                         <th>Gitlab Group</th>
                         <th>最後掃描時間</th>
                         <th>上傳者</th>
+                        <th>主管</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
 
         let index = 0;
-        for (const [projectId, info] of Object.entries(groupedData)) {
+        const sortedProjects = Object.entries(groupedData)
+            .sort(([, left], [, right]) => right.maxVulnerabilityScore - left.maxVulnerabilityScore);
+        for (const [projectId, info] of sortedProjects) {
             const detailRowId = `detail-${index}`;
             const iconId = `icon-${index}`;
 
@@ -285,30 +377,35 @@
                     <td>${escapeHTML(info.gitlabGroupId)}</td>
                     <td style="color: var(--text-muted); font-size: 13px;">${dateStr}</td>
                     <td style="color: var(--text-muted); font-size: 13px;">${escapeHTML(info.importedBy) || '-'}</td>
+                    <td>${renderSupervisorSelect(info.supervisors)}</td>
                 </tr>
             `;
 
             html += `
                 <tr id="${detailRowId}" class="detail-row" style="display: none;">
-                    <td colspan="6">
+                    <td colspan="7">
                         <table class="detail-table">
                             <thead>
                                 <tr>
                                     <th>命中套件名稱 (Component)</th>
                                     <th>使用版本</th>
+                                    <th>最高弱點分數</th>
                                 </tr>
                             </thead>
                             <tbody>
             `;
 
-            info.components.forEach(comp => {
+            [...info.components]
+                .sort((left, right) => getVulnerabilityScore(right.vulnerabilityScore) - getVulnerabilityScore(left.vulnerabilityScore))
+                .forEach(comp => {
                 html += `
                                 <tr>
                                     <td><strong>${escapeHTML(comp.name)}</strong></td>
                                     <td>${escapeHTML(comp.version) || '-'}</td>
+                                    <td>${formatVulnerabilityScore(comp.vulnerabilityScore)}</td>
                                 </tr>
                 `;
-            });
+                });
 
             html += `
                             </tbody>

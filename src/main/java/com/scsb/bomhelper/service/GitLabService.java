@@ -3,6 +3,7 @@ package com.scsb.bomhelper.service;
 import com.scsb.bomhelper.config.GitLabProperties;
 import com.scsb.bomhelper.dto.gitlab.GitLabGroup;
 import com.scsb.bomhelper.dto.gitlab.GitLabProject;
+import com.scsb.bomhelper.dto.gitlab.GitLabProjectMember;
 import com.scsb.bomhelper.dto.gitlab.GitLabUser;
 import com.scsb.bomhelper.dto.gitlab.OAuthTokenResponse;
 import org.slf4j.Logger;
@@ -15,10 +16,13 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.util.UriUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 
 /**
  * 與 GitLab Server 溝通的服務：
@@ -36,6 +40,8 @@ public class GitLabService {
 
     private final RestClient gitLabRestClient;
     private final GitLabProperties properties;
+    private volatile String adminAccessToken;
+    private volatile Instant adminTokenExpiresAt = Instant.EPOCH;
 
     public GitLabService(@Qualifier("gitLabRestClient") RestClient gitLabRestClient,
                          GitLabProperties properties) {
@@ -166,6 +172,91 @@ public class GitLabService {
             if (page > 50) break;
         }
         return all;
+    }
+
+    /**
+     * Retrieves project members, including inherited group members. GitLab access levels are
+     * 50 for Owner and 40 for Maintainer.
+     */
+    public List<GitLabProjectMember> fetchProjectMembers(String projectId, String accessToken) {
+        if (projectId == null || projectId.isBlank() || accessToken == null || accessToken.isBlank()) {
+            return List.of();
+        }
+
+        try {
+            String encodedProjectId = UriUtils.encodePathSegment(projectId, StandardCharsets.UTF_8);
+            GitLabProjectMember[] members = gitLabRestClient.get()
+                    .uri("/api/v4/projects/" + encodedProjectId + "/members/all?per_page=100")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (req, res) -> {
+                        throw new GitLabAuthException("取得 Project 成員失敗 (" + res.getStatusCode() + ")");
+                    })
+                    .body(GitLabProjectMember[].class);
+            return members == null ? List.of() : List.of(members);
+        } catch (Exception e) {
+            log.warn("無法取得 GitLab Project {} 的 Owner/Maintainer：{}", projectId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * Retrieves all direct and inherited Group members using the configured GitLab administrator.
+     * This ensures every authorized search user can see the Group's Owner and Maintainer contacts.
+     */
+    public List<GitLabProjectMember> fetchGroupMembersAsAdmin(String groupId) {
+        if (groupId == null || groupId.isBlank()) return List.of();
+
+        String adminToken = getAdminAccessToken();
+        if (adminToken == null) return List.of();
+
+        List<GitLabProjectMember> all = new ArrayList<>();
+        String encodedGroupId = UriUtils.encodePathSegment(groupId, StandardCharsets.UTF_8);
+        int page = 1;
+        int perPage = properties.getPageSize();
+        try {
+            while (true) {
+                GitLabProjectMember[] members = gitLabRestClient.get()
+                        .uri("/api/v4/groups/" + encodedGroupId + "/members/all?per_page=" + perPage + "&page=" + page)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .retrieve()
+                        .onStatus(HttpStatusCode::isError, (req, res) -> {
+                            throw new GitLabAuthException("取得 Group 成員失敗 (" + res.getStatusCode() + ")");
+                        })
+                        .body(GitLabProjectMember[].class);
+                if (members == null || members.length == 0) break;
+                Collections.addAll(all, members);
+                if (members.length < perPage || ++page > 50) break;
+            }
+            return all;
+        } catch (Exception e) {
+            log.warn("無法取得 GitLab Group {} 的 Owner/Maintainer：{}", groupId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private synchronized String getAdminAccessToken() {
+        if (adminAccessToken != null && Instant.now().isBefore(adminTokenExpiresAt)) {
+            return adminAccessToken;
+        }
+        if (properties.getAdminUsername() == null || properties.getAdminUsername().isBlank()
+                || properties.getAdminPassword() == null || properties.getAdminPassword().isBlank()) {
+            log.warn("未設定 GITLAB_ADMIN_PASSWORD，無法查詢 Group Owner/Maintainer。");
+            return null;
+        }
+        try {
+            OAuthTokenResponse token = loginWithPassword(properties.getAdminUsername(), properties.getAdminPassword());
+            if (token == null || token.getAccessToken() == null || token.getAccessToken().isBlank()) {
+                return null;
+            }
+            long expiresIn = token.getExpiresIn() == null ? 300 : token.getExpiresIn();
+            adminAccessToken = token.getAccessToken();
+            adminTokenExpiresAt = Instant.now().plusSeconds(Math.max(30, expiresIn - 30));
+            return adminAccessToken;
+        } catch (Exception e) {
+            log.warn("GitLab 管理者登入失敗，無法查詢 Group Owner/Maintainer：{}", e.getMessage());
+            return null;
+        }
     }
 
     // =============================================================

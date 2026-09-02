@@ -67,6 +67,13 @@
             <version>9.0.0</version>
         </dependency>
 
+        <!-- Jasypt: encrypt sensitive property values (DB password, etc.) -->
+        <dependency>
+            <groupId>com.github.ulisesbocchio</groupId>
+            <artifactId>jasypt-spring-boot-starter</artifactId>
+            <version>3.0.5</version>
+        </dependency>
+
         <!-- Databases -->
         <dependency>
             <groupId>com.h2database</groupId>

@@ -3,8 +3,12 @@ package com.scsb.bomhelper.controller;
 import com.scsb.bomhelper.entity.BomComponent;
 import com.scsb.bomhelper.repository.BomComponentRepository;
 import com.scsb.bomhelper.repository.BomDependencyRepository; // 💡 1. 補上 Import
+import com.scsb.bomhelper.repository.BomVulnerabilityRepository;
 import com.scsb.bomhelper.security.GitLabUserPrincipal;
 import com.scsb.bomhelper.service.BomImportService;
+import com.scsb.bomhelper.service.GitLabService;
+import com.scsb.bomhelper.dto.gitlab.GitLabProjectMember;
+import com.scsb.bomhelper.util.VersionComparator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -17,6 +21,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.Comparator;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/bom")
@@ -27,14 +34,20 @@ public class BomController {
     private final BomImportService bomImportService;
     private final BomComponentRepository bomComponentRepository;
     private final BomDependencyRepository bomDependencyRepository; // 💡 2. 宣告 Repository
+    private final BomVulnerabilityRepository bomVulnerabilityRepository;
+    private final GitLabService gitLabService;
 
     // 💡 3. 將 BomDependencyRepository 加入建構子中，讓 Spring Boot 自動注入
     public BomController(BomImportService bomImportService,
                          BomComponentRepository bomComponentRepository,
-                         BomDependencyRepository bomDependencyRepository) {
+                         BomDependencyRepository bomDependencyRepository,
+                         BomVulnerabilityRepository bomVulnerabilityRepository,
+                         GitLabService gitLabService) {
         this.bomImportService = bomImportService;
         this.bomComponentRepository = bomComponentRepository;
         this.bomDependencyRepository = bomDependencyRepository;
+        this.bomVulnerabilityRepository = bomVulnerabilityRepository;
+        this.gitLabService = gitLabService;
     }
 
     /**
@@ -85,11 +98,18 @@ public class BomController {
     public ResponseEntity<List<Map<String, Object>>> searchBom(
             @RequestParam("type") String searchType,
             @RequestParam("keyword") String keyword,
+            @RequestParam(value = "version", required = false) String version,
+            @RequestParam(value = "versionOperator", required = false, defaultValue = "=") String versionOperator,
             @AuthenticationPrincipal GitLabUserPrincipal principal) {
 
         try {
             List<BomComponent> components;
             boolean isAdmin = principal != null && principal.isAdmin();
+            boolean hasVersionFilter = "component".equalsIgnoreCase(searchType)
+                    && version != null && !version.isBlank();
+            if (hasVersionFilter && !Set.of("=", ">", ">=", "<", "<=").contains(versionOperator)) {
+                return ResponseEntity.badRequest().build();
+            }
 
             if (isAdmin) {
                 // ★ GitLab Admin：不受 Group / Project 限制，看全部資料
@@ -103,9 +123,9 @@ public class BomController {
                 // 一般使用者：依在 GitLab 上的 Group / Project 權限做過濾
                 List<String> groupIds = principal == null ? List.of() : principal.getAuthorizedGroupIds();
                 List<String> projectIds = principal == null ? List.of() : principal.getAuthorizedProjectIds();
-                log.info("[Search] user={}, type={}, keyword={}, groupIds={}, projectIds={}",
+                log.info("[Search] user={}, type={}, keyword={}, version={}, groupIds={}, projectIds={}",
                         principal == null ? "anonymous" : principal.getUsername(),
-                        searchType, keyword, groupIds, projectIds);
+                        searchType, keyword, hasVersionFilter ? version : null, groupIds, projectIds);
                 if (groupIds.isEmpty() && projectIds.isEmpty()) {
                     return ResponseEntity.ok(new ArrayList<>());
                 }
@@ -124,8 +144,23 @@ public class BomController {
                 }
             }
 
+            if (hasVersionFilter) {
+                components = components.stream()
+                        .filter(component -> matchesVersion(component.getVersion(), version, versionOperator))
+                        .toList();
+            }
+
+            Map<String, Map<String, Double>> scoresByScanId = new HashMap<>();
+            Map<String, GroupManagers> managersByGroupId = new HashMap<>();
+
             List<Map<String, Object>> resultList = new ArrayList<>();
             for (BomComponent comp : components) {
+                String scanId = comp.getBomReport().getScanId();
+                Map<String, Double> scoresByReference = scoresByScanId.computeIfAbsent(scanId,
+                        this::findMaximumScoresByReference);
+                GroupManagers managers = managersByGroupId.computeIfAbsent(
+                        comp.getBomReport().getGitlabGroupId(), this::findGroupManagers);
+
                 Map<String, Object> map = new HashMap<>();
                 map.put("componentName", comp.getName());
                 map.put("componentVersion", comp.getVersion());
@@ -134,6 +169,8 @@ public class BomController {
                 map.put("gitlabProjectId", comp.getBomReport().getGitlabProjectId());
                 map.put("timestamp", comp.getBomReport().getTimestamp());
                 map.put("importedBy", comp.getBomReport().getImportedBy());
+                map.put("vulnerabilityScore", scoresByReference.getOrDefault(comp.getBomRef(), 0.0));
+                map.put("supervisors", managers.supervisors());
 
                 // 💡 簡單判斷依賴關係：如果該套件在 Dependency 表中是別人的 Child，則標記為間接依賴
                 boolean isTransitive = bomDependencyRepository.checkIsTransitive(
@@ -148,4 +185,47 @@ public class BomController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+
+    private Map<String, Double> findMaximumScoresByReference(String scanId) {
+        return bomVulnerabilityRepository.findMaximumScoresByScanId(scanId).stream()
+                .filter(row -> row[0] != null && row[1] != null)
+                .collect(Collectors.toMap(
+                        row -> (String) row[0],
+                        row -> ((Number) row[1]).doubleValue()));
+    }
+
+    private GroupManagers findGroupManagers(String groupId) {
+        List<GitLabProjectMember> members = gitLabService.fetchGroupMembersAsAdmin(groupId);
+        List<String> owners = memberNames(members, 50);
+        List<String> maintainers = memberNames(members, 40);
+        List<String> supervisors = new ArrayList<>();
+        owners.forEach(name -> supervisors.add("Owner：" + name));
+        maintainers.forEach(name -> supervisors.add("Maintainer：" + name));
+        return new GroupManagers(supervisors);
+    }
+
+    private List<String> memberNames(List<GitLabProjectMember> members, int accessLevel) {
+        return members.stream()
+                .filter(member -> Integer.valueOf(accessLevel).equals(member.getAccessLevel()))
+                .map(member -> member.getName() == null || member.getName().isBlank()
+                        ? member.getUsername() : member.getName())
+                .filter(name -> name != null && !name.isBlank())
+                .distinct()
+                .sorted(Comparator.comparing(String::toLowerCase))
+                .toList();
+    }
+
+    private boolean matchesVersion(String componentVersion, String requestedVersion, String operator) {
+        int comparison = VersionComparator.compare(componentVersion, requestedVersion);
+        return switch (operator) {
+            case "=" -> comparison == 0;
+            case ">" -> comparison > 0;
+            case ">=" -> comparison >= 0;
+            case "<" -> comparison < 0;
+            case "<=" -> comparison <= 0;
+            default -> false;
+        };
+    }
+
+    private record GroupManagers(List<String> supervisors) { }
 }

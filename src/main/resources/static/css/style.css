@@ -97,6 +97,15 @@ body {
     min-width: 300px;
 }
 
+.version-input {
+    flex: 0 1 220px;
+    min-width: 180px;
+}
+
+.version-operator {
+    min-width: 140px;
+}
+
 .search-input:focus,
 .search-type-select:focus {
     outline: none;
@@ -334,6 +343,35 @@ tr:hover td { background: rgba(37, 99, 235, 0.04); }
     background: #e0e7ff;
     color: #3730a3;
     border: 1px solid #c7d2fe;
+}
+
+.vulnerability-score {
+    font-weight: 700;
+}
+
+.score-none { color: #111827; }
+.score-low { color: #2563eb; }
+.score-medium { color: #ca8a04; }
+.score-high { color: #ea580c; }
+.score-critical { color: #dc2626; }
+
+.supervisor-field {
+    margin-left: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+}
+
+.supervisor-select {
+    max-width: 220px;
+    min-width: 140px;
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #fff;
+    color: #334155;
+    font-size: 12px;
 }
 
 /* ==========================================

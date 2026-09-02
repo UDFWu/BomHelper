@@ -25,6 +25,12 @@ public class GitLabProperties {
     /** Trust self-signed TLS certificates (for internal HTTPS deployments only). */
     private boolean trustSelfSigned = false;
 
+    /** GitLab administrator account used only for Group manager lookup. */
+    private String adminUsername;
+
+    /** Password supplied through the GITLAB_ADMIN_PASSWORD environment variable. */
+    private String adminPassword;
+
     public String getBaseUrl() { return baseUrl; }
     public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
 
@@ -39,4 +45,10 @@ public class GitLabProperties {
 
     public boolean isTrustSelfSigned() { return trustSelfSigned; }
     public void setTrustSelfSigned(boolean trustSelfSigned) { this.trustSelfSigned = trustSelfSigned; }
+
+    public String getAdminUsername() { return adminUsername; }
+    public void setAdminUsername(String adminUsername) { this.adminUsername = adminUsername; }
+
+    public String getAdminPassword() { return adminPassword; }
+    public void setAdminPassword(String adminPassword) { this.adminPassword = adminPassword; }
 }
