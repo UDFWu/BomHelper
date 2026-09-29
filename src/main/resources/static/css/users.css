@@ -1,0 +1,22 @@
+.management-header, .list-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.management-header h1 { margin: 4px 0 0; font-size: 28px; letter-spacing: -.5px; }
+.eyebrow { margin: 0; color: #64748b; font-size: 12px; letter-spacing: 2px; }
+.role-chip, .status-chip { display: inline-block; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.role-chip { background: #e0e7ff; color: #3730a3; }
+.notice { margin-bottom: 20px; padding: 16px 20px; border-radius: 12px; }
+.form-hint { color: #64748b; line-height: 1.6; margin-bottom: 24px; }
+.user-form { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.form-field { display: flex; flex-direction: column; gap: 8px; }
+.form-field label { font-size: 14px; font-weight: 600; }
+.form-field input, .form-field select { width: 100%; height: 46px; padding: 10px 14px; background-color: #fff; color: #1e293b; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
+.form-field input:focus, .form-field select:focus { border-color: #2563eb; }
+.form-field small { color: #64748b; font-size: 12px; }
+.form-actions { align-self: center; justify-self: end; }
+.status-active { color: #166534; background: #dcfce7; }
+.status-disabled { color: #475569; background: #e2e8f0; }
+.list-heading h2 { margin: 0; font-size: 20px; }
+.list-heading > span, .users-table time { color: #64748b; font-size: 12px; }
+.users-table { min-width: 700px; }
+.users-table time { display: block; margin-top: 6px; }
+.pagination { display: flex; justify-content: flex-end; gap: 20px; padding-top: 24px; font-size: 14px; }
+@media (max-width: 640px) { .user-form { grid-template-columns: 1fr; } .form-actions, .form-actions button { width: 100%; } .management-header { align-items: flex-start; } }

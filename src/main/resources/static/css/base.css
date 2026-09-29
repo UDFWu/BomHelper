@@ -1,0 +1,21 @@
+/* Shared controls. CSS uses 96 px/in: 0.5 cm × 96 / 2.54 = 18.8976 px. */
+:root { --select-arrow-inset: 18.9px; --focus-color: #2563eb; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body, input, select, button { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; }
+button, input, select { font-size: inherit; }
+select:not([multiple]):not([size]) {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m3 5 5 5 5-5' fill='none' stroke='%23475569' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-position: right var(--select-arrow-inset) center;
+    background-repeat: no-repeat;
+    background-size: 16px 16px;
+    padding-right: 48px;
+    cursor: pointer;
+}
+:where(a, button, input, select, summary):focus-visible { outline: 3px solid #93c5fd; outline-offset: 3px; }
+button:disabled { cursor: not-allowed; opacity: .7; }
+@media (forced-colors: active) {
+    select:not([multiple]):not([size]) { appearance: auto; background-image: none; }
+}

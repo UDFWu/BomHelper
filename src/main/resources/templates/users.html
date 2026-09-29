@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-TW" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>使用者管理 - BOM Helper</title>
+    <link rel="stylesheet" th:href="@{/css/base.css}">
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" th:href="@{/css/users.css}">
+</head>
+<body>
+<main class="page-wrapper">
+    <header class="management-header">
+        <div><p class="eyebrow">系統管理</p><h1>使用者管理</h1></div>
+        <span class="role-chip">9999 · 管理員</span>
+    </header>
+    <div th:if="${successMessage}" class="notice success" role="status" th:text="${successMessage}"></div>
+    <div th:if="${errorMessage}" class="notice error" role="alert" th:text="${errorMessage}"></div>
+    <section class="search-container" aria-labelledby="create-heading">
+        <h2 id="create-heading">建立使用者</h2>
+        <p class="form-hint">建立本機登入帳號。資訊研發處（0113）帳號由 GitLab 登入自動同步。</p>
+        <form th:action="@{/users}" method="post" class="user-form">
+            <div class="form-field">
+                <label for="userId">使用者帳號</label>
+                <input id="userId" name="userId" th:value="${enteredUserId}" maxlength="100" required autocomplete="off" pattern="[A-Za-z0-9][A-Za-z0-9._@\-]{0,99}" aria-describedby="user-id-hint">
+                <small id="user-id-hint">英數字開頭，可包含 . _ @ -</small>
+            </div>
+            <div class="form-field">
+                <label for="authorityCode">帳號權限</label>
+                <select id="authorityCode" name="authorityCode">
+                    <option value="0170">0170 · 資訊安全處</option>
+                    <option value="9999">9999 · 管理員</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label for="password">密碼</label>
+                <input id="password" name="password" type="password" minlength="8" maxlength="256" required autocomplete="new-password" aria-describedby="password-hint">
+                <small id="password-hint">8–256 字元</small>
+            </div>
+            <div class="form-field">
+                <label for="confirmation">確認密碼</label>
+                <input id="confirmation" name="confirmation" type="password" minlength="8" maxlength="256" required autocomplete="new-password">
+            </div>
+            <div class="form-field">
+                <label for="status">帳號狀態</label>
+                <select id="status" name="status"><option value="A">啟用</option><option value="D">停用</option></select>
+            </div>
+            <div class="form-actions"><button type="submit" class="search-btn">建立帳號</button></div>
+        </form>
+    </section>
+    <section class="search-container" aria-labelledby="update-heading">
+        <h2 id="update-heading">異動使用者</h2>
+        <form th:action="@{/users/status}" method="post" class="user-form">
+            <div class="form-field">
+                <label for="updateUserId">使用者帳號</label>
+                <input id="updateUserId" name="userId" maxlength="100" required autocomplete="off">
+            </div>
+            <div class="form-field">
+                <label for="updateStatus">帳號狀態</label>
+                <select id="updateStatus" name="status"><option value="A">A · 啟用</option><option value="D">D · 停用</option></select>
+            </div>
+            <div class="form-actions"><button type="submit" class="search-btn">更新狀態</button></div>
+        </form>
+    </section>
+    <section class="result-container" aria-labelledby="list-heading">
+        <div class="list-heading"><h2 id="list-heading">使用者清單</h2><span th:text="|共 ${usersPage.totalElements} 個帳號|"></span></div>
+        <table class="users-table">
+            <thead><tr><th>使用者帳號</th><th>權限</th><th>狀態</th><th>建立人員／日期</th><th>異動人員／日期</th></tr></thead>
+            <tbody>
+            <tr th:each="account : ${usersPage.content}">
+                <td><strong th:text="${account.userId}"></strong></td>
+                <td th:switch="${account.authorityCode}"><span th:case="'9999'">9999 · 管理員</span><span th:case="'0170'">0170 · 資訊安全處</span><span th:case="*">0113 · 資訊研發處</span></td>
+                <td><span class="status-chip" th:classappend="${account.status == 'A' ? 'status-active' : 'status-disabled'}" th:text="${account.status == 'A' ? '啟用' : '停用'}"></span></td>
+                <td><span th:text="${account.createdBy}"></span><time th:text="${#temporals.format(account.createdDate, 'yyyy-MM-dd HH:mm')}"></time></td>
+                <td><span th:text="${account.updatedBy}"></span><time th:text="${#temporals.format(account.updatedDate, 'yyyy-MM-dd HH:mm')}"></time></td>
+            </tr>
+            <tr th:if="${usersPage.empty}"><td colspan="5" class="no-result">尚無使用者資料。</td></tr>
+            </tbody>
+        </table>
+        <nav class="pagination" aria-label="使用者清單分頁">
+            <a th:if="${usersPage.hasPrevious()}" th:href="@{/users(page=${usersPage.number - 1})}">上一頁</a>
+            <span th:text="|第 ${usersPage.number + 1} 頁|"></span>
+            <a th:if="${usersPage.hasNext()}" th:href="@{/users(page=${usersPage.number + 1})}">下一頁</a>
+        </nav>
+    </section>
+</main>
+</body>
+</html>
