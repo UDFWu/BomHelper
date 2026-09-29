@@ -87,7 +87,7 @@ public class JasyptCli {
      * Build an encryptor whose configuration matches jasypt-spring-boot-starter 3.0.x defaults,
      * so values encrypted here can be decrypted by the running Spring Boot application.
      */
-    private static PooledPBEStringEncryptor buildEncryptor(String master) {
+    public static PooledPBEStringEncryptor buildEncryptor(String master) {
         PooledPBEStringEncryptor encryptor = new PooledPBEStringEncryptor();
         SimpleStringPBEConfig config = new SimpleStringPBEConfig();
         config.setPassword(master);

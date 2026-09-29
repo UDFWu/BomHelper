@@ -1,5 +1,8 @@
 package com.scsb.bomhelper.controller;
 
+import org.springframework.dao.ConcurrencyFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
+
 import com.scsb.bomhelper.service.BomImportService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,6 +97,10 @@ public class CiBomController {
             body.put("fileName", file.getOriginalFilename());
             return ResponseEntity.ok(body);
 
+        } catch (ConcurrencyFailureException | DataIntegrityViolationException e) {
+            body.put("success", false);
+            body.put("message", "報告匯入衝突，本次交易已回復，請重新上傳。");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
         } catch (IllegalArgumentException e) {
             // 商業邏輯錯誤（例如 ScanId 重複、XML 缺欄位）
             log.warn("[CI] BOM 匯入被拒：{}", e.getMessage());
@@ -104,7 +111,7 @@ public class CiBomController {
         } catch (Exception e) {
             log.error("[CI] BOM 匯入失敗", e);
             body.put("success", false);
-            body.put("message", "BOM 檔案處理失敗：" + e.getMessage());
+            body.put("message", "BOM 檔案處理失敗，請確認 XML 格式或聯絡管理員。");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
         }
     }

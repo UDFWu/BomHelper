@@ -1,5 +1,12 @@
 package com.scsb.bomhelper.controller;
 
+import com.scsb.bomhelper.repository.BomReportRepository;
+import org.springframework.dao.ConcurrencyFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.MediaType;
+import org.springframework.http.ContentDisposition;
+import java.nio.charset.StandardCharsets;
+
 import com.scsb.bomhelper.entity.BomComponent;
 import com.scsb.bomhelper.repository.BomComponentRepository;
 import com.scsb.bomhelper.repository.BomDependencyRepository; // 💡 1. 補上 Import
@@ -36,18 +43,21 @@ public class BomController {
     private final BomDependencyRepository bomDependencyRepository; // 💡 2. 宣告 Repository
     private final BomVulnerabilityRepository bomVulnerabilityRepository;
     private final GitLabService gitLabService;
+    private final BomReportRepository bomReportRepository;
 
     // 💡 3. 將 BomDependencyRepository 加入建構子中，讓 Spring Boot 自動注入
     public BomController(BomImportService bomImportService,
                          BomComponentRepository bomComponentRepository,
                          BomDependencyRepository bomDependencyRepository,
                          BomVulnerabilityRepository bomVulnerabilityRepository,
-                         GitLabService gitLabService) {
+                         GitLabService gitLabService,
+                         BomReportRepository bomReportRepository) {
         this.bomImportService = bomImportService;
         this.bomComponentRepository = bomComponentRepository;
         this.bomDependencyRepository = bomDependencyRepository;
         this.bomVulnerabilityRepository = bomVulnerabilityRepository;
         this.gitLabService = gitLabService;
+        this.bomReportRepository = bomReportRepository;
     }
 
     /**
@@ -78,20 +88,41 @@ public class BomController {
         }
 
         // 若前端沒傳 importedBy，就用目前登入的 GitLab 帳號
-        String effectiveImportedBy = (importedBy != null && !importedBy.isBlank())
-                ? importedBy
-                : principal.getUsername();
+        String effectiveImportedBy = principal.getUsername();
 
         try {
             bomImportService.importSbom(file, gitlabGroupId, effectiveImportedBy);
             return ResponseEntity.ok("BOM 檔案解析並寫入資料庫成功！");
 
+        } catch (ConcurrencyFailureException | DataIntegrityViolationException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body("報告匯入衝突，本次交易已回復，請重新上傳。");
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         } catch (Exception e) {
+            log.error("BOM import failed", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("BOM 檔案處理失敗: " + e.getMessage());
+                    .body("BOM 檔案處理失敗，請確認 XML 格式或聯絡管理員。");
         }
+    }
+
+    @GetMapping("/reports/{id}/download")
+    public ResponseEntity<byte[]> downloadReport(@PathVariable Integer id,
+            @AuthenticationPrincipal GitLabUserPrincipal principal) {
+        if (principal == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        var report = bomReportRepository.findById(id).orElse(null);
+        // Hide existence of reports outside the caller's existing search scope.
+        if (report == null || !(principal.canViewAllReports()
+                || principal.getAuthorizedGroupIds().contains(report.getGitlabGroupId())
+                || principal.getAuthorizedProjectIds().contains(report.getGitlabProjectId()))) {
+            return ResponseEntity.notFound().build();
+        }
+        if (report.getRawXmlContent() == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok()
+                .contentType(new MediaType("application", "xml", StandardCharsets.UTF_8))
+                .header("Content-Disposition", ContentDisposition.attachment()
+                        .filename("bom-report-" + id + ".xml").build().toString())
+                .header("Cache-Control", "no-store")
+                .body(report.getRawXmlContent().getBytes(StandardCharsets.UTF_8));
     }
 
     @GetMapping("/search")
@@ -104,7 +135,7 @@ public class BomController {
 
         try {
             List<BomComponent> components;
-            boolean isAdmin = principal != null && principal.isAdmin();
+            boolean isAdmin = principal != null && principal.canViewAllReports();
             boolean hasVersionFilter = "component".equalsIgnoreCase(searchType)
                     && version != null && !version.isBlank();
             if (hasVersionFilter && !Set.of("=", ">", ">=", "<", "<=").contains(versionOperator)) {
@@ -151,17 +182,19 @@ public class BomController {
             }
 
             Map<String, Map<String, Double>> scoresByScanId = new HashMap<>();
-            Map<String, GroupManagers> managersByGroupId = new HashMap<>();
+            Map<List<String>, ProjectManagers> managersByProject = new HashMap<>();
 
             List<Map<String, Object>> resultList = new ArrayList<>();
             for (BomComponent comp : components) {
                 String scanId = comp.getBomReport().getScanId();
                 Map<String, Double> scoresByReference = scoresByScanId.computeIfAbsent(scanId,
                         this::findMaximumScoresByReference);
-                GroupManagers managers = managersByGroupId.computeIfAbsent(
-                        comp.getBomReport().getGitlabGroupId(), this::findGroupManagers);
+                ProjectManagers managers = managersByProject.computeIfAbsent(
+                        List.of(comp.getBomReport().getGitlabGroupId(), comp.getBomReport().getGitlabProjectId()),
+                        key -> findProjectManagers(key.get(0), key.get(1)));
 
                 Map<String, Object> map = new HashMap<>();
+                map.put("reportId", comp.getBomReport().getId());
                 map.put("componentName", comp.getName());
                 map.put("componentVersion", comp.getVersion());
                 map.put("purl", comp.getPurl());
@@ -194,21 +227,21 @@ public class BomController {
                         row -> ((Number) row[1]).doubleValue()));
     }
 
-    private GroupManagers findGroupManagers(String groupId) {
-        List<GitLabProjectMember> members = gitLabService.fetchGroupMembersAsAdmin(groupId);
+    private ProjectManagers findProjectManagers(String groupId, String projectId) {
+        List<GitLabProjectMember> members = gitLabService.fetchProjectMembersAsAdmin(groupId, projectId);
         List<String> owners = memberNames(members, 50);
         List<String> maintainers = memberNames(members, 40);
         List<String> supervisors = new ArrayList<>();
         owners.forEach(name -> supervisors.add("Owner：" + name));
         maintainers.forEach(name -> supervisors.add("Maintainer：" + name));
-        return new GroupManagers(supervisors);
+        return new ProjectManagers(supervisors);
     }
 
     private List<String> memberNames(List<GitLabProjectMember> members, int accessLevel) {
         return members.stream()
                 .filter(member -> Integer.valueOf(accessLevel).equals(member.getAccessLevel()))
                 .map(member -> member.getName() == null || member.getName().isBlank()
-                        ? member.getUsername() : member.getName())
+                        ? member.getUsername() : member.getName() + (member.getUsername() == null ? "" : " (@" + member.getUsername() + ")"))
                 .filter(name -> name != null && !name.isBlank())
                 .distinct()
                 .sorted(Comparator.comparing(String::toLowerCase))
@@ -227,5 +260,5 @@ public class BomController {
         };
     }
 
-    private record GroupManagers(List<String> supervisors) { }
+    private record ProjectManagers(List<String> supervisors) { }
 }

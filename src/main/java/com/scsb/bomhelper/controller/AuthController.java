@@ -26,8 +26,7 @@ public class AuthController {
                             @RequestParam(value = "logout", required = false) String logout,
                             Model model) {
         if (error != null) {
-            model.addAttribute("errorMessage", "登入失敗：請確認 GitLab 帳號密碼是否正確，"
-                    + "或您的帳號是否啟用 2FA。");
+            model.addAttribute("errorMessage", "登入失敗：請確認登入方式、帳號密碼及帳號狀態。");
         }
         if (logout != null) {
             model.addAttribute("logoutMessage", "您已成功登出。");

@@ -537,10 +537,47 @@ input[type="file"] {
     margin-top: 20px;
     padding: 15px;
     border-radius: var(--radius-md);
-    display: none;
     font-size: 14px;
     font-weight: 600;
     animation: fadeIn 0.3s ease-out;
 }
 .success { background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
 .error { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+/* Shared result details formerly embedded in templates. */
+.section-title { margin: 0 0 20px; color: #111827; }
+.expander-cell { width: 40px; text-align: center; }
+.text-center { text-align: center; }
+.text-primary { color: var(--primary-color); }
+.metadata-cell { color: var(--text-muted); font-size: 13px; }
+.field-warning { color: #b3261e; font-size: 13px; margin-top: 6px; line-height: 1.6; }
+.text-error { color: #b3261e; }
+.search-container, .result-container, .upload-container { background: #fff; border-color: #e2e8f0; box-shadow: 0 4px 20px #0f172a08; }
+.page-wrapper { margin-top: 24px; }
+.search-container h2, .upload-container h2 { font-size: 24px; }
+.tree-summary { flex-wrap: wrap; gap: 8px; }
+.result-container a { color: #1d4ed8; font-weight: 600; text-underline-offset: 3px; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+/* Six distinct fields on each project summary; download appears only here. */
+.tree-summary.project-columns {
+    display: grid;
+    grid-template-columns: minmax(150px, 1.6fr) minmax(130px, 1.2fr) minmax(80px, .8fr) minmax(70px, .6fr) minmax(150px, 1.4fr) minmax(80px, .7fr);
+    gap: 0;
+    align-items: stretch;
+    padding: 16px 8px;
+    background: #edf3fa;
+    border: 1px solid #c9d8e9;
+    border-radius: 8px;
+}
+.project-column { display: flex; flex-direction: column; gap: 10px; padding: 0 14px; min-width: 0; overflow-wrap: anywhere; }
+.project-column + .project-column { border-left: 1px solid #c9d8e9; }
+.column-label { color: #52637a; font-size: 12px; font-weight: 600; }
+.project-report-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.project-report-actions a { white-space: nowrap; font-weight: 600; }
+.project-column .supervisor-select { width: 100%; max-width: 100%; }
+@media (max-width: 1000px) {
+    .tree-summary.project-columns { grid-template-columns: 1fr; gap: 14px; }
+    .project-column + .project-column { border-left: 0; border-top: 1px solid #c9d8e9; padding-top: 12px; }
+}

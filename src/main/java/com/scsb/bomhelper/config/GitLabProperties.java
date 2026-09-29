@@ -25,7 +25,7 @@ public class GitLabProperties {
     /** Trust self-signed TLS certificates (for internal HTTPS deployments only). */
     private boolean trustSelfSigned = false;
 
-    /** GitLab administrator account used only for Group manager lookup. */
+    /** GitLab administrator account used for project manager lookup. */
     private String adminUsername;
 
     /** Password supplied through the GITLAB_ADMIN_PASSWORD environment variable. */

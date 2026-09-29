@@ -7,7 +7,8 @@ import java.util.Date;
 import java.util.List;
 
 @Entity
-@Table(name = "BomReport")
+@Table(name = "BomReport", uniqueConstraints = @UniqueConstraint(
+        name = "UQ_BomReport_Group_Project", columnNames = {"GitlabGroupId", "GitlabProjectId"}))
 public class BomReport {
 
     @Id
@@ -30,14 +31,17 @@ public class BomReport {
     @Column(name = "Timestamp")
     private Date timestamp;
 
-    @Column(name = "RawXmlContent")
+    @Column(name = "RawXmlContent", length = Integer.MAX_VALUE)
     private String rawXmlContent;
 
     @Column(name = "ImportedBy", length = 100, nullable = false)
     private String importedBy;
 
-    @Column(name = "ImportDate", insertable = false, updatable = false)
+    @Column(name = "ImportDate", nullable = false, updatable = false)
     private Date importDate;
+
+    @PrePersist
+    void recordImportDate() { importDate = new Date(); }
 
     // ==========================================
     // Relationships: One-to-Many

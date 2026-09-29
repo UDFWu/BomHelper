@@ -235,6 +235,41 @@ public class GitLabService {
         }
     }
 
+    /** Project paths include the full namespace, so sibling projects never share contacts. */
+    public List<GitLabProjectMember> fetchProjectMembersAsAdmin(String groupId, String projectId) {
+        if (projectId == null || projectId.isBlank()) return List.of();
+        String token = getAdminAccessToken();
+        if (token == null) return List.of();
+        int perPage = Math.max(1, Math.min(100, properties.getPageSize()));
+        List<GitLabProjectMember> all = new ArrayList<>();
+        try {
+            String namespace = groupId;
+            if (!projectId.matches("[0-9]+") && !projectId.contains("/")
+                    && groupId != null && groupId.matches("[0-9]+")) {
+                GitLabGroup group = gitLabRestClient.get().uri("/api/v4/groups/{id}", groupId)
+                        .header("Authorization", "Bearer " + token).retrieve().body(GitLabGroup.class);
+                if (group == null || group.getFullPath() == null) return List.of();
+                namespace = group.getFullPath();
+            }
+            String path = projectId.matches("[0-9]+") || projectId.contains("/")
+                    ? projectId : namespace + "/" + projectId;
+            for (int page = 1; ; page++) {
+                // A URI template variable is encoded exactly once, including namespace slashes.
+                GitLabProjectMember[] members = gitLabRestClient.get()
+                        .uri("/api/v4/projects/{project}/members/all?per_page={size}&page={page}", path, perPage, page)
+                        .header("Authorization", "Bearer " + token)
+                        .retrieve().body(GitLabProjectMember[].class);
+                if (members == null || members.length == 0) break;
+                Collections.addAll(all, members);
+                if (members.length < perPage) break;
+            }
+            return all;
+        } catch (Exception e) {
+            log.warn("無法取得 GitLab Project {}/{} 的 Owner/Maintainer", groupId, projectId);
+            return List.of();
+        }
+    }
+
     private synchronized String getAdminAccessToken() {
         if (adminAccessToken != null && Instant.now().isBefore(adminTokenExpiresAt)) {
             return adminAccessToken;

@@ -1,5 +1,9 @@
 package com.scsb.bomhelper.security;
 
+import com.scsb.bomhelper.service.GitLabUserSyncService;
+import org.springframework.dao.DataAccessException;
+import org.springframework.security.authentication.AuthenticationServiceException;
+
 import com.scsb.bomhelper.dto.gitlab.GitLabGroup;
 import com.scsb.bomhelper.dto.gitlab.GitLabProject;
 import com.scsb.bomhelper.dto.gitlab.GitLabUser;
@@ -28,9 +32,12 @@ public class GitLabAuthenticationProvider implements AuthenticationProvider {
     private static final Logger log = LoggerFactory.getLogger(GitLabAuthenticationProvider.class);
 
     private final GitLabService gitLabService;
+    private final GitLabUserSyncService userSyncService;
 
-    public GitLabAuthenticationProvider(GitLabService gitLabService) {
+    public GitLabAuthenticationProvider(GitLabService gitLabService,
+            GitLabUserSyncService userSyncService) {
         this.gitLabService = gitLabService;
+        this.userSyncService = userSyncService;
     }
 
     @Override
@@ -66,6 +73,7 @@ public class GitLabAuthenticationProvider implements AuthenticationProvider {
 
             GitLabUserPrincipal principal =
                     new GitLabUserPrincipal(gitLabUser, token.getAccessToken(), groups, projects);
+            userSyncService.synchronize(gitLabUser);
 
             // 4) 建立通過驗證的 Authentication 物件，回傳給 Spring Security
             UsernamePasswordAuthenticationToken result =
@@ -76,6 +84,9 @@ public class GitLabAuthenticationProvider implements AuthenticationProvider {
         } catch (GitLabService.GitLabAuthException e) {
             log.warn("GitLab 認證失敗：{}", e.getMessage());
             throw new BadCredentialsException(e.getMessage(), e);
+        } catch (DataAccessException e) {
+            log.error("GitLab user synchronization failed", e);
+            throw new AuthenticationServiceException("帳號同步失敗，請稍後重試。", e);
         }
     }
 

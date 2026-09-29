@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="context-path" th:content="@{/}">
+    <meta name="csrf-token" th:content="${_csrf.token}">
+    <meta name="csrf-header" th:content="${_csrf.headerName}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SBOM 檔案上傳系統</title>
+    <link rel="stylesheet" th:href="@{/css/base.css}">
     <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 <body>
@@ -28,7 +31,7 @@
                     </option>
                 </select>
                 <div th:if="${currentUser == null or #lists.isEmpty(currentUser.groups)}"
-                     style="color:#b3261e; font-size:13px; margin-top:6px;">
+                     class="field-warning">
                     您目前沒有任何 GitLab Group 權限，無法上傳報告。
                     請聯絡 GitLab 管理員把您加入對應的 Group 後重新登入。
                 </div>
@@ -45,7 +48,7 @@
             <button type="submit" class="submit-btn" id="submitBtn">確認並上傳報告</button>
         </form>
 
-        <div id="status-message"></div>
+        <div id="status-message" role="status" aria-live="polite" hidden></div>
     </div>
 </div>
 
@@ -71,7 +74,7 @@
     uploadForm.addEventListener('submit', function(e) {
         e.preventDefault();
 
-        statusMsg.style.display = 'none';
+        statusMsg.hidden = true;
         statusMsg.className = '';
         submitBtn.disabled = true;
         submitBtn.textContent = '處理中...';
@@ -80,6 +83,10 @@
 
         fetch(API_BASE + '/api/v1/bom/upload', {
             method: 'POST',
+            headers: {
+                [document.querySelector('meta[name="csrf-header"]').content]:
+                    document.querySelector('meta[name="csrf-token"]').content
+            },
             body: formData
         })
         .then(async response => {
@@ -104,7 +111,7 @@
     function showStatus(message, type) {
         statusMsg.textContent = message;
         statusMsg.className = type;
-        statusMsg.style.display = 'block';
+        statusMsg.hidden = false;
     }
 </script>
 

@@ -15,7 +15,7 @@ SBOM (Software Bill of Materials) 影響範圍與組成查詢系統。
 ## 技術棧
 
 - Java 17
-- Spring Boot 3.4.5（Web + Security + Data JPA + Thymeleaf）
+- Spring Boot 3.5.16（Web + Security + Data JPA + Thymeleaf）
 - Microsoft SQL Server（正式環境）/ H2（測試）
 - CycloneDX core 9.0.0、Jackson XML
 - 前端：Thymeleaf + 原生 JavaScript（iframe 切換內容頁）
@@ -266,3 +266,10 @@ A: Spring Security 預設 `X-Frame-Options: DENY` 會擋掉 iframe，本專案�
 
 **Q: SBOM 雙向查詢查不到資料？**  
 A: 後端 INFO log 會印出 `[Search] user=..., groupIds=[...], projectIds=[...]`，請對照資料庫中 `BomReport.GitlabGroupId` / `GitlabProjectId` 的值，確認您所屬的 Group/Project 識別碼有對上。
+
+
+## 最新報告與本機帳號
+
+新版採 Spring Boot 3.5.16。部署前請依 [資料庫升級、0170 帳號建立及驗證說明](docs/deployment.md) 執行 SQL。0170 本機帳號可查閱全專案，0113 由 GitLab 登入後自動同步。
+
+9999 管理員可使用「使用者管理」建立本機帳號。既有資料庫請先執行 `sql/003_user_admin_role.sql`，再以 `sql/004_bootstrap_admin.sql` 建立首位 admin；本機建置改用 `scripts/build-local.ps1`，套件下載至 `D:\.m2`。

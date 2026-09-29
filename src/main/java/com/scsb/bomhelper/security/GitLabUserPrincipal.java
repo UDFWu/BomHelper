@@ -87,7 +87,7 @@ public class GitLabUserPrincipal implements UserDetails, Serializable {
             return List.of(new SimpleGrantedAuthority("ROLE_USER"),
                            new SimpleGrantedAuthority("ROLE_ADMIN"));
         }
-        return List.of(new SimpleGrantedAuthority("ROLE_USER"));
+        return List.of(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("ROLE_" + AccountPolicy.GITLAB));
     }
 
     @Override
@@ -121,6 +121,11 @@ public class GitLabUserPrincipal implements UserDetails, Serializable {
     public boolean isAdmin() {
         return Boolean.TRUE.equals(gitLabUser.getIsAdmin());
     }
+
+    public boolean canViewAllReports() { return isAdmin(); }
+
+    /** Local account administration is separate from GitLab administrator privileges. */
+    public boolean isUserAdmin() { return false; }
 
     // ------- Accessors -------
 

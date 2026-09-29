@@ -1,5 +1,10 @@
 package com.scsb.bomhelper.service;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.Charset;
+import javax.xml.stream.XMLStreamException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.scsb.bomhelper.dto.CycloneDxBomDto;
@@ -10,7 +15,8 @@ import com.scsb.bomhelper.entity.BomDependency;
 import com.scsb.bomhelper.entity.BomReport;
 import com.scsb.bomhelper.entity.BomVulnerability;
 import com.scsb.bomhelper.repository.BomReportRepository;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -21,7 +27,7 @@ import java.util.Date;
 import java.util.stream.Collectors;
 
 @Service
-@Transactional
+@Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
 public class BomImportService {
 
     private final BomReportRepository bomReportRepository;
@@ -33,6 +39,8 @@ public class BomImportService {
         // 💡 忽略 XML 命名空間，避免解析失敗
         XMLInputFactory inputFactory = XMLInputFactory.newInstance();
         inputFactory.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, false);
+        inputFactory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+        inputFactory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
 
         this.xmlMapper = new XmlMapper(inputFactory);
         this.xmlMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -56,10 +64,32 @@ public class BomImportService {
                            String importedBy) throws Exception {
 
         // 1. 讀取原始 XML 內容
-        String rawXml = new String(file.getBytes(), StandardCharsets.UTF_8);
+        byte[] bytes = file.getBytes();
+        String rawXml;
+        try {
+            var reader = xmlMapper.getFactory().getXMLInputFactory()
+                    .createXMLStreamReader(new ByteArrayInputStream(bytes));
+            try {
+                String encoding = reader.getEncoding();
+                rawXml = new String(bytes, encoding == null ? StandardCharsets.UTF_8
+                        : Charset.forName(encoding)).replaceFirst("^\\uFEFF", "");
+            } finally {
+                reader.close();
+            }
+        } catch (XMLStreamException | IllegalArgumentException e) {
+            throw new IllegalArgumentException("無法解析 BOM XML 的編碼或格式。", e);
+        }
+        if (rawXml.contains("<!DOCTYPE")) {
+            throw new IllegalArgumentException("BOM XML 不允許 DOCTYPE 或外部實體。");
+        }
 
         // 2. 解析 XML 到 DTO
-        CycloneDxBomDto dto = xmlMapper.readValue(rawXml, CycloneDxBomDto.class);
+        CycloneDxBomDto dto;
+        try {
+            dto = xmlMapper.readValue(rawXml, CycloneDxBomDto.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("無法解析 BOM XML 格式。", e);
+        }
 
         if (dto == null) {
             throw new IllegalArgumentException("無法解析 SBOM 檔案內容。");
@@ -70,8 +100,10 @@ public class BomImportService {
         report.setGitlabGroupId(gitlabGroupId);
         report.setImportedBy(importedBy);
 
-        String cleanXmlForDb = rawXml.replaceFirst("^<\\?xml.*?\\?>\\s*", "");
-        report.setRawXmlContent(cleanXmlForDb);
+        // Preserve every line break and indentation. Downloads are encoded as UTF-8.
+        String downloadXml = rawXml.replaceFirst(
+                "(?s)^(<\\?xml\\s+[^?]*?encoding\\s*=\\s*)[\"'][^\"']+[\"']", "$1\"UTF-8\"");
+        report.setRawXmlContent(downloadXml);
         report.setSerialNumber(dto.getSerialNumber());
 
         // 4. 解析 Metadata 資訊
@@ -94,11 +126,6 @@ public class BomImportService {
             }
             report.setScanId(scanId);
 
-            // 4.3 檢查 ScanId 是否已存在
-            if (bomReportRepository.existsByScanId(scanId)) {
-                throw new IllegalArgumentException("此 Scan ID (" + scanId + ") 的報告已存在，請勿重複上傳。");
-            }
-
             // 4.4 處理專案代號
             String rawProjectName = dto.getMetadata().getProjectName();
             if (rawProjectName != null) {
@@ -112,6 +139,11 @@ public class BomImportService {
         if (gitlabProjectId != null && !gitlabProjectId.isBlank()) {
             report.setGitlabProjectId(gitlabProjectId);
         }
+
+        report.setGitlabGroupId(requiredIdentifier(report.getGitlabGroupId(), "GitLab Group"));
+        report.setGitlabProjectId(requiredIdentifier(report.getGitlabProjectId(), "GitLab Project"));
+        report.setScanId(requiredIdentifier(report.getScanId(), "Scan ID"));
+        report.setImportedBy(requiredIdentifier(importedBy, "上傳者"));
 
         // 5. 轉換 Components
         if (dto.getComponents() != null) {
@@ -176,6 +208,23 @@ public class BomImportService {
         }
 
         // 8. 儲存到資料庫 (透過 CascadeType.ALL 自動寫入所有關聯子表)
-        bomReportRepository.save(report);
+        // Serializable + database unique key protect concurrent imports, including first uploads.
+        var previous = bomReportRepository.findByGitlabGroupIdAndGitlabProjectId(
+                report.getGitlabGroupId(), report.getGitlabProjectId());
+        var scanOwner = bomReportRepository.findByScanId(report.getScanId());
+        if (scanOwner.isPresent() && previous.stream().noneMatch(
+                old -> old.getId().equals(scanOwner.get().getId()))) {
+            throw new IllegalArgumentException("此 Scan ID 已由另一個 GitLab 專案使用。");
+        }
+        bomReportRepository.deleteAll(previous);
+        bomReportRepository.flush(); // Release ScanId and project keys before the replacement insert.
+        bomReportRepository.saveAndFlush(report);
+    }
+
+    private String requiredIdentifier(String value, String label) {
+        if (value == null || value.isBlank() || value.trim().length() > 100) {
+            throw new IllegalArgumentException(label + " 必須為 1 至 100 字元。");
+        }
+        return value.trim();
     }
 }

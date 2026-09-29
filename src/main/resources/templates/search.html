@@ -5,6 +5,7 @@
     <meta name="context-path" th:content="@{/}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SBOM 影響範圍與組成查詢</title>
+    <link rel="stylesheet" th:href="@{/css/base.css}">
     <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
 
@@ -29,8 +30,8 @@
                 <option value="<">版本小於</option>
                 <option value="<=">版本小於等於</option>
             </select>
-            <input type="text" id="versionInput" class="search-input version-input" placeholder="套件版本（選填，例如 2.1.0）" onkeypress="handleKeyPress(event)">
-            <button onclick="performSearch()" class="search-btn">立即查詢</button>
+            <input type="text" id="versionInput" class="search-input version-input" placeholder="套件版本（選填，如 2.1.0）" onkeypress="handleKeyPress(event)">
+            <button onclick="performSearch()" class="search-btn">查詢</button>
         </div>
     </div>
 
@@ -86,6 +87,11 @@
     document.getElementById('searchType').addEventListener('change', updateVersionFilterVisibility);
 
     // 執行搜尋
+    function downloadLink(reportId) {
+        if (!Number.isInteger(reportId) || reportId <= 0) return '-';
+        return `<a href="${escapeHTML(API_BASE)}/api/v1/bom/reports/${reportId}/download" onclick="event.stopPropagation()">下載報告</a>`;
+    }
+
     function performSearch() {
         const type = document.getElementById('searchType').value;
         const keyword = document.getElementById('searchInput').value.trim();
@@ -106,7 +112,7 @@
             searchParams.set('versionOperator', versionOperator);
         }
 
-        fetch(`/api/v1/bom/search?${searchParams.toString()}`)
+        fetch(`${API_BASE}/api/v1/bom/search?${searchParams.toString()}`)
             .then(response => {
                 if (!response.ok) throw new Error('伺服器回應錯誤');
                 return response.json();
@@ -128,7 +134,7 @@
             })
             .catch(err => {
                 console.error(err);
-                resultArea.innerHTML = '<div class="no-result" style="color:#dc2626;">❌ 查詢失敗，請檢查網路狀態或聯絡管理員。</div>';
+                resultArea.innerHTML = '<div class="no-result text-error">❌ 查詢失敗，請檢查網路狀態或聯絡管理員。</div>';
             });
     }
 
@@ -137,11 +143,11 @@
         const detailRow = document.getElementById(rowId);
         const icon = document.getElementById(iconId);
 
-        if (detailRow.style.display === 'none') {
-            detailRow.style.display = 'table-row';
+        if (detailRow.hidden) {
+            detailRow.hidden = false;
             icon.classList.add('open');
         } else {
-            detailRow.style.display = 'none';
+            detailRow.hidden = true;
             icon.classList.remove('open');
         }
     }
@@ -179,22 +185,24 @@
         const options = supervisors.map((supervisor, index) =>
             `<option value="${escapeHTML(supervisor)}"${index === 0 ? ' selected' : ''}>${escapeHTML(supervisor)}</option>`
         ).join('');
-        return `<select class="supervisor-select" aria-label="GitLab Group 主管" onclick="event.stopPropagation()">${options}</select>`;
+        return `<select class="supervisor-select" aria-label="GitLab Project 主管" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">${options}</select>`;
     }
 
     // 💡 模式 1 (已更新)：依專案名稱查詢，加入掃描時間顯示
     function renderApplicationView(data, container) {
 
         // 1. 先將平面資料依據 Gitlab Project ID 分組
-        const projects = {};
+        const projects = Object.create(null);
         data.forEach(item => {
-            const pid = item.gitlabProjectId;
+            const pid = String(item.reportId);
             if (!projects[pid]) {
                 // 💡 在初始化專案物件時，順便存下時間 (timestamp) 與 上傳者 (importedBy)
                 projects[pid] = {
                     direct: [],
                     transitive: [],
                     timestamp: item.timestamp,
+                    reportId: item.reportId,
+                    projectName: item.gitlabProjectId,
                     importedBy: item.importedBy,
                     supervisors: item.supervisors,
                     maxVulnerabilityScore: 0
@@ -212,7 +220,7 @@
         });
 
         let html = `
-            <h3 style="margin-top: 0; margin-bottom: 20px; color: #111827;">專案套件依賴關係</h3>
+            <h3 class="section-title">專案套件依賴關係</h3>
             <div class="tree-container">
         `;
 
@@ -237,12 +245,13 @@
             // 專案根節點 (將時間 / 上傳者加入到 badge 內或後方)
             html += `
                 <details class="tree-node project-node" open>
-                    <summary class="tree-summary project-summary">
-                        <span class="folder-icon">📁</span>
-                        <strong class="project-name">${escapeHTML(pid)}</strong>
-                        <span class="tree-badge">
-                            掃描時間：${dateStr} | 上傳者：${importedByStr} | 共 ${totalCount} 個套件
-                        </span>
+                    <summary class="tree-summary project-summary project-columns">
+                        <span class="project-column"><span class="column-label">GitLab Project 名稱</span><strong class="project-name">📁 ${escapeHTML(groups.projectName)}</strong></span>
+                        <span class="project-column"><span class="column-label">掃描時間</span><span>${dateStr}</span></span>
+                        <span class="project-column"><span class="column-label">上傳者</span><span>${importedByStr}</span></span>
+                        <span class="project-column"><span class="column-label">套件數量</span><span>${totalCount} 個套件</span></span>
+                        <span class="project-column"><span class="column-label">主管</span>${renderSupervisorSelect(groups.supervisors)}</span>
+                        <span class="project-column"><span class="column-label">下載報告</span><span class="project-report-actions">${downloadLink(groups.reportId)}</span></span>
                     </summary>
                     <div class="tree-children">
             `;
@@ -321,13 +330,15 @@
 
     // 模式 2 (保持不變)：按套件名稱查詢，列出受影響專案
     function renderComponentView(data, container) {
-        const groupedData = {};
+        const groupedData = Object.create(null);
         data.forEach(item => {
-            const pid = item.gitlabProjectId;
+            const pid = String(item.reportId);
             if (!groupedData[pid]) {
                 groupedData[pid] = {
                     gitlabGroupId: item.gitlabGroupId,
                     timestamp: item.timestamp,
+                    reportId: item.reportId,
+                    projectName: item.gitlabProjectId,
                     importedBy: item.importedBy, // 💡 上傳者
                     supervisors: item.supervisors,
                     maxVulnerabilityScore: 0,
@@ -346,17 +357,18 @@
         });
 
         let html = `
-            <h3 style="margin-top: 0; margin-bottom: 20px; color: #111827;">受影響專案清單</h3>
+            <h3 class="section-title">受影響專案清單</h3>
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 40px; text-align: center;"></th>
+                        <th class="expander-cell"></th>
                         <th>Gitlab Project</th>
                         <th>匹配套件數</th>
                         <th>Gitlab Group</th>
                         <th>最後掃描時間</th>
                         <th>上傳者</th>
                         <th>主管</th>
+                        <th>下載</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -379,19 +391,20 @@
 
             html += `
                 <tr class="clickable-row" onclick="toggleRow('${detailRowId}', '${iconId}')">
-                    <td style="text-align: center;"><span id="${iconId}" class="toggle-icon">▶</span></td>
-                    <td><strong style="color:var(--primary-color)">${escapeHTML(projectId)}</strong></td>
-                    <td><span class="dependency-tag" style="background:#e0e7ff; color:#3730a3; border: 1px solid #c7d2fe;">${info.components.length} 個套件</span></td>
+                    <td class="text-center"><span id="${iconId}" class="toggle-icon">▶</span></td>
+                    <td><strong class="text-primary">${escapeHTML(info.projectName)}</strong></td>
+                    <td><span class="dependency-tag">${info.components.length} 個套件</span></td>
                     <td>${escapeHTML(info.gitlabGroupId)}</td>
-                    <td style="color: var(--text-muted); font-size: 13px;">${dateStr}</td>
-                    <td style="color: var(--text-muted); font-size: 13px;">${escapeHTML(info.importedBy) || '-'}</td>
+                    <td class="metadata-cell">${dateStr}</td>
+                    <td class="metadata-cell">${escapeHTML(info.importedBy) || '-'}</td>
                     <td>${renderSupervisorSelect(info.supervisors)}</td>
+                    <td>${downloadLink(info.reportId)}</td>
                 </tr>
             `;
 
             html += `
-                <tr id="${detailRowId}" class="detail-row" style="display: none;">
-                    <td colspan="7">
+                <tr id="${detailRowId}" class="detail-row" hidden>
+                    <td colspan="8">
                         <table class="detail-table">
                             <thead>
                                 <tr>

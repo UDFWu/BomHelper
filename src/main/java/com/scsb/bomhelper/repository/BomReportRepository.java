@@ -1,5 +1,9 @@
 package com.scsb.bomhelper.repository;
 
+import java.util.Optional;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
+
 import com.scsb.bomhelper.entity.BomReport;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -8,6 +12,11 @@ import java.util.List;
 
 @Repository
 public interface BomReportRepository extends JpaRepository<BomReport, Integer> {
+
+    Optional<BomReport> findByScanId(String scanId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<BomReport> findByGitlabGroupIdAndGitlabProjectId(String groupId, String projectId);
 
     /**
      * 💡 新增：檢查特定 ScanId 的報告是否已經匯入過
