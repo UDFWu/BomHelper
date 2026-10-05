@@ -39,13 +39,15 @@ CI 沿用傳入的 Group／Project。請讓同一專案的網頁與 CI 使用相
 | UpdatedBy / UpdatedDate | 最後異動人員代號／日期 |
 
 - **9999**：本機管理員，可查詢、下載全部報告；導覽列的「報告檔案上傳」下方顯示「使用者管理」。
-  管理頁面 `/users` 可建立 0170／9999 本機帳號、指定啟用或停用狀態，並分頁檢視帳號及建立／異動資訊。
+  管理頁面 `/users` 可建立 0170／9999 本機帳號及 0113 GitLab 帳號、指定啟用或停用狀態，並分頁檢視帳號及建立／異動資訊。
+  選擇「0113 · 資訊研發處」時不需密碼，DB 密碼欄位為 NULL，UserId 須與 GitLab 使用者名稱相同。
   頁面和 POST 都要求 9999，還會重新檢查 DB 中的帳號狀態與權限；GitLab Admin 不具備本機帳號管理權限。
   建立人員與日期由伺服器填寫，不接受前端偽造；列表與錯誤畫面不回傳密碼或雜湊。
   不新增 GitLab 上傳權限，仍沿用既有上傳群組檢核。
 - **0170**：登入畫面選「本機帳號」。帳號由 9999 管理員在使用者管理頁面建立，可查詢及下載全部報告。
   不授予 GitLab 管理員身分或報告上傳權限。
 - **0113**：選「GitLab 帳號」。登入成功後只在帳號不存在時建立 BomUser；
+  系統自動建立時，CreatedBy 與 UpdatedBy 均為 `system`。管理員預先建立或手動異動時，記錄實際管理員帳號。
   已存在的帳號不更改權限、密碼、狀態及建立／異動資訊。非啟用的 GitLab 或本系統帳號無法登入。
   只在登入時同步，沒有背景同步工作；GitLab 權限沿用既有登入取得的 Group／Project 範圍及既有管理員規則。
   不保存 GitLab 密碼，也不能以本機登入使用 0113 帳號。
@@ -53,6 +55,10 @@ CI 沿用傳入的 Group／Project。請讓同一專案的網頁與 CI 使用相
   GitLab 登入的存取範圍仍依 GitLab 成員權限，不因同名本機角色提升權限。
 - 管理員可在「建立使用者」下方的「異動使用者」設定 A／D，程式填入異動人員與時間。
 - 本機帳號停用在下次登入生效；現有登入 session 依原有 session 生命週期處理。
+
+專案 Maven artifactId／name、Spring application name 及頁面品牌名稱為 `sbomHelper`，部署產物為 `target/sbomHelper.war`。
+外部 Tomcat 以 WAR 名稱決定 context path 時，新預設路徑為 `/sbomHelper`；反向代理設定需同步更新。
+Java 套件名稱與資料表名稱維持相容；Jasypt 主密鑰亦沿用既有設定。
 
 管理頁面建立的本機帳號密碼使用 Spring Security 的 PBKDF2-HMAC-SHA256，600,000 次迭代、16-byte 隨機 salt、
 256-bit 輸出；不可逆，不提供解密。使用以下工具產生雜湊，再套用
@@ -75,19 +81,28 @@ java -cp $bomClasspath com.scsb.bomhelper.util.LocalPasswordCli
 本次部署須先執行 007，避免舊 XML 欄位在新程式上傳時繼續改寫空白或拒絕 encoding 宣告。
 
 兩種查詢結果皆新增「下載報告」，端點為 `GET /api/v1/bom/reports/{id}/download`。
-伺服器重新檢核權限，以 UTF-8 XML attachment 傳回完整 `RawXmlContent`；
+伺服器重新檢核權限，以 XML attachment 傳回原始 `RawXmlBytes`（不重新排版、不轉換編碼）；
 未授權或報告不存在回傳 404，未登入由 Spring Security 導向登入。
-檔名為 `bom-report-{id}.xml`，不直接使用上傳檔名。
+檔名為 `<GitLab Project Name>-scan-report.xml`，優先使用 GitLab API 的專案顯示名稱，API 不可用時回退至資料庫專案代號的最後一段。
+檔名會替換不合法字元，並支援 UTF-8 中文名稱。
 部署前執行 [007_preserve_report_xml_format.sql](../sql/007_preserve_report_xml_format.sql)，
 將 RawXmlContent 由 XML 轉為 nvarchar(max)；此步驟對新建與既有 DB 都適用。
 請先備份並於維護時段執行；轉換在同一交易中完成，保留現有內容，不可還原已被 XML 型別移除的換行。
-新上傳保留 LF／CRLF／CR、縮排與未映射標籤。下載採 UTF-8，XML 宣告的 encoding 同步改為 UTF-8，
-因此並非原始編碼的逐位元組備份；舊資料需要重新上傳原檔才能恢復排版。
+另須先執行 [008_preserve_original_report_bytes.sql](../sql/008_preserve_original_report_bytes.sql)，新增 `RawXmlBytes varbinary(max)`。
+新上傳直接保存檔案位元組，下載與原檔逐位元組相同，包括 LF／CRLF／CR、縮排、空白、BOM 與編碼宣告。
+既有資料沒有 `RawXmlBytes` 時沿用 UTF-8 文字下載；需要重新上傳原檔才能恢復已遺失的格式。
+回歸測試以 `cfms-bom.xml` 實際匯入、DB 讀回再下載，比對完整位元組內容。
 
-兩種查詢的主管均使用 GitLab 專案 members/all API（包含繼承成員），分頁取得 Owner／Maintainer。
-依完整群組／專案路徑分別查詢，單次搜尋同專案只查一次；使用既有 GitLab 管理者 API 設定。
-API 未設定或無法讀取時顯示「-」，不以 Group 名單替代。參考 [GitLab 官方 API](https://docs.gitlab.com/api/project_members/)。
-專案最上層顯示六欄：名稱、掃描時間、上傳者、套件數量、主管、下載；明細不重複放下載連結。
+設定伺服器環境變數 `GITLAB_ADMIN_TOKEN` 為管理者 Personal Access Token（需可讀取 API），不要將 token 寫入版本控制。
+未設定 token 時，仍支援 `gitlab.admin-username`／`gitlab.admin-password` 管理者帳密設定。
+本機或 GitLab 登入成功後，以管理者 API 分頁取得所有 Group／Project 及其 members/all（包含繼承成員），
+僅將 Owner（50）與 Maintainer（40）保留於伺服器記憶體；全部成功才替換名單，失敗保留前次完整名單並記錄警告，不阻擋登入。
+兩種查詢的欄位名稱改為「負責人」，僅列出 Project members/all 的 Owner／Maintainer（含群組繼承成員）。
+不另外追加 Group Owner／Group Maintainer，避免同一人重複出現；相同角色與顯示名稱去重後排序。
+依完整群組／專案路徑分別查詢，單次搜尋同專案只查一次；快取未命中時以管理者 API 查詢。
+未設定或無法讀取且沒有快取時顯示「-」。主管快取不改變查詢報告的使用者權限篩選。
+參考 [GitLab Project API](https://docs.gitlab.com/api/project_members/) 與 [Group API](https://docs.gitlab.com/api/group_members/)。
+專案最上層顯示六欄：名稱、掃描時間、上傳者、套件數量、負責人、下載；明細不重複放下載連結。
 群組請使用完整 namespace 路徑（子群組須包含上層），或數字 Group ID；專案可使用數字 ID、完整路徑或相對群組的 project path。
 
 表單登入、登出與網頁上傳已啟用 CSRF；CI 仍沿用原本免登入、免 CSRF 的網路整合端點。

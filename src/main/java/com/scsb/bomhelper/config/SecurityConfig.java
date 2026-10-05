@@ -1,6 +1,7 @@
 package com.scsb.bomhelper.config;
 
 import com.scsb.bomhelper.security.LocalAuthenticationProvider;
+import com.scsb.bomhelper.service.GitLabService;
 import org.springframework.security.authentication.BadCredentialsException;
 
 import com.scsb.bomhelper.security.GitLabAuthenticationProvider;
@@ -26,11 +27,14 @@ public class SecurityConfig {
 
     private final GitLabAuthenticationProvider gitLabAuthenticationProvider;
     private final LocalAuthenticationProvider localAuthenticationProvider;
+    private final GitLabService gitLabService;
 
     public SecurityConfig(GitLabAuthenticationProvider gitLabAuthenticationProvider,
-            LocalAuthenticationProvider localAuthenticationProvider) {
+            LocalAuthenticationProvider localAuthenticationProvider,
+            GitLabService gitLabService) {
         this.gitLabAuthenticationProvider = gitLabAuthenticationProvider;
         this.localAuthenticationProvider = localAuthenticationProvider;
+        this.gitLabService = gitLabService;
     }
 
     @Bean
@@ -69,7 +73,10 @@ public class SecurityConfig {
                             String source = request.getParameter("loginSource");
                             return source == null ? "gitlab" : source;
                         })
-                        .defaultSuccessUrl("/", true)
+                        .successHandler((request, response, authentication) -> {
+                            gitLabService.refreshSupervisorDirectory();
+                            response.sendRedirect(request.getContextPath() + "/");
+                        })
                         .failureUrl("/login?error")
                         .permitAll()
                 )

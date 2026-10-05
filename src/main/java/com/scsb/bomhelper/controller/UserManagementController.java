@@ -39,8 +39,8 @@ public class UserManagementController {
 
     @PostMapping
     public String create(@AuthenticationPrincipal GitLabUserPrincipal actor,
-                         @RequestParam String userId, @RequestParam String password,
-                         @RequestParam String confirmation, @RequestParam String authorityCode,
+                         @RequestParam String userId, @RequestParam(required = false) String password,
+                         @RequestParam(required = false) String confirmation, @RequestParam String authorityCode,
                          @RequestParam String status, Model model, RedirectAttributes redirect,
                          HttpServletResponse response) {
         try {

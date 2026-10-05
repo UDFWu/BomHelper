@@ -31,6 +31,12 @@ public class GitLabProperties {
     /** Password supplied through the GITLAB_ADMIN_PASSWORD environment variable. */
     private String adminPassword;
 
+    /** Administrator PAT supplied through GITLAB_ADMIN_TOKEN. */
+    private String adminToken;
+
+    public String getAdminToken() { return adminToken; }
+    public void setAdminToken(String adminToken) { this.adminToken = adminToken; }
+
     public String getBaseUrl() { return baseUrl; }
     public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
 

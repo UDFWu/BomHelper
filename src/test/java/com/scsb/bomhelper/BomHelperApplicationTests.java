@@ -143,7 +143,7 @@ class BomHelperApplicationTests {
         var report = reports.findAll().get(0);
         String url = "/api/v1/bom/reports/" + report.getId() + "/download";
         mvc.perform(get(url).with(user(new LocalUserPrincipal("security", "0170"))))
-                .andExpect(status().isOk()).andExpect(header().string("Content-Disposition", "attachment; filename=\"bom-report-" + report.getId() + ".xml\""))
+                .andExpect(status().isOk()).andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("filename*=UTF-8''project-scan-report.xml")))
                 .andExpect(content().bytes(report.getRawXmlContent().getBytes(StandardCharsets.UTF_8)));
         mvc.perform(get(url).with(user(developer("group")))).andExpect(status().isOk());
         mvc.perform(get(url).with(user(developer("other")))).andExpect(status().isNotFound());
@@ -160,7 +160,7 @@ class BomHelperApplicationTests {
         mvc.perform(multipart("/api/v1/bom/upload").file(file(xml("c", "project", "lib"))).param("gitlabGroupId", "one").with(user(local)).with(csrf()))
                 .andExpect(status().isForbidden());
     }
-    @Test void localLoginNeverCallsGitlabAndRejectsDisabledWrongOrUnknownAccounts() throws Exception {
+    @Test void localLoginRefreshesSupervisorsOnlyAfterSuccessfulAuthentication() throws Exception {
         local("security", "A"); local("disabled", "D");
         mvc.perform(post("/login").param("loginSource", "local").param("username", "security").param("password", PASSWORD).with(csrf()))
                 .andExpect(status().is3xxRedirection()).andExpect(redirectedUrl("/"));
@@ -170,7 +170,8 @@ class BomHelperApplicationTests {
         }
         mvc.perform(post("/login").param("loginSource", "local").param("username", "security").param("password", "wrong").with(csrf()))
                 .andExpect(redirectedUrl("/login?error"));
-        verifyNoInteractions(gitlab);
+        verify(gitlab).refreshSupervisorDirectory();
+        verifyNoMoreInteractions(gitlab);
     }
     @Test void csrfIsRequiredForLoginAndUpload() throws Exception {
         mvc.perform(post("/login").param("loginSource", "local").param("username", "security").param("password", PASSWORD))
@@ -186,9 +187,12 @@ class BomHelperApplicationTests {
         when(gitlab.fetchUserProjects("token")).thenReturn(List.of());
         mvc.perform(post("/login").param("loginSource", "gitlab").param("username", "developer").param("password", PASSWORD).with(csrf()))
                 .andExpect(redirectedUrl("/"));
+        verify(gitlab).refreshSupervisorDirectory();
         var user = users.findById("developer").orElseThrow();
         assertThat(user.getAuthorityCode()).isEqualTo("0113");
         assertThat(user.getUserPassValidWord()).isNull();
+        assertThat(user.getCreatedBy()).isEqualTo("system");
+        assertThat(user.getUpdatedBy()).isEqualTo("system");
         var created = user.getCreatedDate();
         var updated = user.getUpdatedDate();
         sync.synchronize(gitlabIdentity("developer"));
@@ -212,6 +216,10 @@ class BomHelperApplicationTests {
         byte[] bytes = ("<?xml version=\"1.0\" encoding=\"UTF-16\"?>" + payload).getBytes(StandardCharsets.UTF_16);
         imports.importSbom(new MockMultipartFile("file", "unicode.xml", "application/xml", bytes), "group", "tester");
         assertThat(reports.findByScanId("unicode").orElseThrow().getRawXmlContent()).isEqualTo("<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + payload);
+        var report = reports.findByScanId("unicode").orElseThrow();
+        mvc.perform(get("/api/v1/bom/reports/" + report.getId() + "/download")
+                .with(user(new LocalUserPrincipal("security", "0170"))))
+                .andExpect(content().bytes(bytes));
     }
     @Test void downloadPreservesUploadedLineEndingsAndIndentation() throws Exception {
         for (String newline : List.of("\n", "\r\n", "\r")) {
@@ -223,6 +231,35 @@ class BomHelperApplicationTests {
                     .with(user(new LocalUserPrincipal("security", "0170"))))
                     .andExpect(content().bytes(payload.getBytes(StandardCharsets.UTF_8)));
         }
+    }
+
+    @Test void cfmsReferenceSurvivesDatabaseRoundTripByteForByteWithProjectDisplayFilename() throws Exception {
+        byte[] original;
+        try (var input = getClass().getResourceAsStream("/cfms-bom.xml")) {
+            original = input.readAllBytes();
+        }
+        imports.importSbom(new MockMultipartFile("file", "cfms-bom.xml", "application/xml", original),
+                "open_cfms", "cfms", "tester");
+        var report = reports.findAll().get(0);
+        assertThat(report.getRawXmlBytes()).isEqualTo(original);
+        when(gitlab.fetchProjectNameAsAdmin("open_cfms", "cfms")).thenReturn("CFMS Project");
+        var response = mvc.perform(get("/api/v1/bom/reports/" + report.getId() + "/download")
+                .with(user(new LocalUserPrincipal("security", "0170"))))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(original)).andReturn().getResponse();
+        assertThat(org.springframework.http.ContentDisposition.parse(response.getHeader("Content-Disposition")).getFilename())
+                .isEqualTo("CFMS Project-scan-report.xml");
+    }
+
+    @Test void legacyTextDownloadStillWorksUntilOriginalIsUploadedAgain() throws Exception {
+        upload("legacy", "group", "project");
+        var report = reports.findAll().get(0);
+        report.setRawXmlBytes(null);
+        reports.saveAndFlush(report);
+        mvc.perform(get("/api/v1/bom/reports/" + report.getId() + "/download")
+                .with(user(new LocalUserPrincipal("security", "0170"))))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(report.getRawXmlContent().getBytes(StandardCharsets.UTF_8)));
     }
 
     @Test void adminUpdatesStatusWithoutChangingOtherAccountFields() throws Exception {
@@ -255,17 +292,19 @@ class BomHelperApplicationTests {
                 .param("userId", "target").param("status", "D")).andExpect(status().isForbidden());
     }
 
-    @Test void searchUsesEachProjectsManagersRatherThanGroupManagers() throws Exception {
+    @Test void searchShowsOnlyProjectOwnersAndMaintainersIncludingInheritedMembers() throws Exception {
         upload("one", "group", "first"); upload("two", "group", "second");
         var owner = new GitLabProjectMember(); owner.setUsername("owner"); owner.setName("Owner name"); owner.setAccessLevel(50);
         var maintainer = new GitLabProjectMember(); maintainer.setUsername("maintainer"); maintainer.setAccessLevel(40);
         when(gitlab.fetchProjectMembersAsAdmin("group", "first")).thenReturn(List.of(owner));
         when(gitlab.fetchProjectMembersAsAdmin("group", "second")).thenReturn(List.of(maintainer));
+        when(gitlab.fetchGroupMembersAsAdmin("group")).thenReturn(List.of(maintainer));
         for (String type : List.of("component", "application")) {
             mvc.perform(get("/api/v1/bom/search").param("type", type).param("keyword", type.equals("component") ? "test-lib" : "first")
                     .with(user(new LocalUserPrincipal("security", "0170"))))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[?(@.gitlabProjectId == 'first')].supervisors[0]").value(org.hamcrest.Matchers.hasItem("Owner：Owner name (@owner)")));
+                    .andExpect(jsonPath("$[?(@.gitlabProjectId == 'first')].supervisors[0]").value(org.hamcrest.Matchers.hasItem("Owner：Owner name (@owner)")))
+                    .andExpect(jsonPath("$[?(@.gitlabProjectId == 'first')].supervisors.length()").value(org.hamcrest.Matchers.hasItem(1)));
         }
         verify(gitlab, never()).fetchGroupMembersAsAdmin(anyString());
         verify(gitlab).fetchProjectMembersAsAdmin("group", "second");
@@ -341,13 +380,13 @@ class BomHelperApplicationTests {
                     .param("username", account.getUserId()).param("password", "12345678")).andExpect(redirectedUrl("/"));
         }
     }
-    @Test void userCreationRejectsGitlabRoleDuplicatesInvalidDataAndMissingCsrf() throws Exception {
+    @Test void userCreationRejectsUnknownRolesDuplicatesInvalidDataAndMissingCsrf() throws Exception {
         var actor = admin();
         mvc.perform(post("/users").with(user(actor)).param("userId", "test")).andExpect(status().isForbidden());
         for (String[] params : List.of(
                 new String[]{"admin", "12345678", "12345678", "9999", "A"},
                 new String[]{"ADMIN", "12345678", "12345678", "9999", "A"},
-                new String[]{"developer", "12345678", "12345678", "0113", "A"},
+                new String[]{"developer", "12345678", "12345678", "8888", "A"},
                 new String[]{"invalid", "1234567", "1234567", "0170", "A"},
                 new String[]{"invalid", "12345678", "different", "0170", "A"},
                 new String[]{"invalid", "12345678", "12345678", "0170", "X"},
@@ -358,6 +397,32 @@ class BomHelperApplicationTests {
         }
         assertThat(users.count()).isEqualTo(1);
         assertThat(users.findById("admin").orElseThrow().getUserPassValidWord()).isEqualTo(HASH);
+    }
+    @Test void adminCanPrecreate0113WithoutLocalPasswordAndGitlabKeepsManualAudit() throws Exception {
+        var actor = admin();
+        mvc.perform(get("/users").with(user(actor)))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("0113 · 資訊研發處")));
+        for (String state : List.of("A", "D")) {
+            String id = "development-" + state;
+            mvc.perform(post("/users").with(user(actor)).with(csrf())
+                    .param("userId", id).param("authorityCode", "0113").param("status", state))
+                    .andExpect(redirectedUrl("/users"));
+            var account = users.findById(id).orElseThrow();
+            assertThat(account.getAuthorityCode()).isEqualTo("0113");
+            assertThat(account.getUserPassValidWord()).isNull();
+            assertThat(account.getCreatedBy()).isEqualTo("admin");
+            assertThat(account.getUpdatedBy()).isEqualTo("admin");
+            mvc.perform(post("/login").with(csrf()).param("loginSource", "local")
+                    .param("username", id).param("password", "12345678"))
+                    .andExpect(redirectedUrl("/login?error"));
+            if (state.equals("A")) {
+                sync.synchronize(gitlabIdentity(id));
+                assertThat(users.findById(id).orElseThrow().getUpdatedBy()).isEqualTo("admin");
+            } else {
+                assertThatThrownBy(() -> sync.synchronize(gitlabIdentity(id)))
+                        .isInstanceOf(org.springframework.security.authentication.BadCredentialsException.class);
+            }
+        }
     }
     @Test void revokedAdminSessionCannotManageAccounts() throws Exception {
         var actor = admin();

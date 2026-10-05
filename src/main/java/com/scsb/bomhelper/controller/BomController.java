@@ -116,13 +116,25 @@ public class BomController {
                 || principal.getAuthorizedProjectIds().contains(report.getGitlabProjectId()))) {
             return ResponseEntity.notFound().build();
         }
-        if (report.getRawXmlContent() == null) return ResponseEntity.notFound().build();
+        byte[] xmlBytes = report.getRawXmlBytes();
+        boolean originalUpload = xmlBytes != null;
+        if (!originalUpload) {
+            if (report.getRawXmlContent() == null) return ResponseEntity.notFound().build();
+            xmlBytes = report.getRawXmlContent().getBytes(StandardCharsets.UTF_8);
+        }
+        String projectName = gitLabService.fetchProjectNameAsAdmin(report.getGitlabGroupId(), report.getGitlabProjectId());
+        if (projectName == null || projectName.isBlank()) {
+            projectName = report.getGitlabProjectId();
+            projectName = projectName.substring(projectName.lastIndexOf('/') + 1);
+        }
+        String filename = projectName.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_").strip() + "-scan-report.xml";
         return ResponseEntity.ok()
-                .contentType(new MediaType("application", "xml", StandardCharsets.UTF_8))
+                .contentType(originalUpload ? MediaType.APPLICATION_XML
+                        : new MediaType("application", "xml", StandardCharsets.UTF_8))
                 .header("Content-Disposition", ContentDisposition.attachment()
-                        .filename("bom-report-" + id + ".xml").build().toString())
+                        .filename(filename, StandardCharsets.UTF_8).build().toString())
                 .header("Cache-Control", "no-store")
-                .body(report.getRawXmlContent().getBytes(StandardCharsets.UTF_8));
+                .body(xmlBytes);
     }
 
     @GetMapping("/search")

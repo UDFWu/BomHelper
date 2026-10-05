@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="context-path" th:content="@{/}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SBOM 影響範圍與組成查詢</title>
+    <title>影響範圍與組成查詢 - sbomHelper</title>
     <link rel="stylesheet" th:href="@{/css/base.css}">
     <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
@@ -179,13 +179,13 @@
         return Number.isFinite(value) ? Math.min(10, Math.max(0, value)) : 0;
     }
 
-    // Owner 會由 API 排在清單最前方，Maintainer 依姓名排序接續顯示。
+    // 僅顯示 Project 的 Owner、Maintainer（包含繼承成員）。
     function renderSupervisorSelect(supervisors) {
         if (!Array.isArray(supervisors) || supervisors.length === 0) return '-';
         const options = supervisors.map((supervisor, index) =>
             `<option value="${escapeHTML(supervisor)}"${index === 0 ? ' selected' : ''}>${escapeHTML(supervisor)}</option>`
         ).join('');
-        return `<select class="supervisor-select" aria-label="GitLab Project 主管" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">${options}</select>`;
+        return `<select class="supervisor-select" aria-label="GitLab Project 負責人" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">${options}</select>`;
     }
 
     // 💡 模式 1 (已更新)：依專案名稱查詢，加入掃描時間顯示
@@ -250,7 +250,7 @@
                         <span class="project-column"><span class="column-label">掃描時間</span><span>${dateStr}</span></span>
                         <span class="project-column"><span class="column-label">上傳者</span><span>${importedByStr}</span></span>
                         <span class="project-column"><span class="column-label">套件數量</span><span>${totalCount} 個套件</span></span>
-                        <span class="project-column"><span class="column-label">主管</span>${renderSupervisorSelect(groups.supervisors)}</span>
+                        <span class="project-column"><span class="column-label">負責人</span>${renderSupervisorSelect(groups.supervisors)}</span>
                         <span class="project-column"><span class="column-label">下載報告</span><span class="project-report-actions">${downloadLink(groups.reportId)}</span></span>
                     </summary>
                     <div class="tree-children">
@@ -367,7 +367,7 @@
                         <th>Gitlab Group</th>
                         <th>最後掃描時間</th>
                         <th>上傳者</th>
-                        <th>主管</th>
+                        <th>負責人</th>
                         <th>下載</th>
                     </tr>
                 </thead>

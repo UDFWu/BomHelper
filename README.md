@@ -1,4 +1,4 @@
-# BomHelper
+# sbomHelper
 
 SBOM (Software Bill of Materials) 影響範圍與組成查詢系統。  
 解析 CycloneDX 格式的弱點掃描報告，與公司自架 GitLab 整合做使用者驗證與權限控管。
@@ -146,7 +146,7 @@ pipeline {
     agent any
 
     environment {
-        // BomHelper 服務位址（內網）
+        // sbomHelper 服務位址（內網）
         BOMHELPER_URL    = 'http://bomhelper.internal:8080'
 
         // 該專案在 GitLab 上的 Group / Project ID
@@ -185,7 +185,7 @@ pipeline {
             }
         }
 
-        stage('Upload BOM to BomHelper') {
+        stage('Upload BOM to sbomHelper') {
             steps {
                 script {
                     def importedBy = "jenkins:${env.JOB_NAME}#${env.BUILD_NUMBER}"
@@ -207,7 +207,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ BOM 報告已成功上傳到 BomHelper"
+            echo "✅ BOM 報告已成功上傳到 sbomHelper"
         }
         failure {
             echo "❌ Pipeline 失敗，請查看上方日誌"
@@ -225,7 +225,7 @@ pipeline {
 CI 端點 `/api/ci/**` 在 Spring Security 中設定為 `permitAll`，**不做身份驗證**。  
 請至少做以下其中一項額外保護：
 
-1. **網段限制**：用 nginx 的 `allow / deny` 或防火牆只允許 Jenkins 主機 IP 對 BomHelper 8080。
+1. **網段限制**：用 nginx 的 `allow / deny` 或防火牆只允許 Jenkins 主機 IP 對 sbomHelper 8080。
 2. **共享 API Key**：日後可擴充為 `X-API-Key` 驗證機制。
 
 ## 專案結構

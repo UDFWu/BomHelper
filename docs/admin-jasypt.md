@@ -9,7 +9,7 @@
 
 ```powershell
 $env:JASYPT_ENCRYPTOR_PASSWORD='BomHelper'
-java -jar target/bomhelper.war
+java -jar target/sbomHelper.war
 ```
 
 SQL 儲存完整 ENC(...) 字串；使用 PBEWITHHMACSHA512ANDAES_256、1000 次迭代、

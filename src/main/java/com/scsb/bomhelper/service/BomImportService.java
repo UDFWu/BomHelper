@@ -104,6 +104,7 @@ public class BomImportService {
         String downloadXml = rawXml.replaceFirst(
                 "(?s)^(<\\?xml\\s+[^?]*?encoding\\s*=\\s*)[\"'][^\"']+[\"']", "$1\"UTF-8\"");
         report.setRawXmlContent(downloadXml);
+        report.setRawXmlBytes(bytes);
         report.setSerialNumber(dto.getSerialNumber());
 
         // 4. 解析 Metadata 資訊

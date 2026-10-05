@@ -41,7 +41,7 @@ import org.jasypt.encryption.pbe.config.SimpleStringPBEConfig;
  * <pre>
  *   JASYPT_ENCRYPTOR_PASSWORD=YOUR_MASTER_KEY ./mvnw spring-boot:run
  *   # or
- *   java -Djasypt.encryptor.password=YOUR_MASTER_KEY -jar BomHelper.jar
+ *   java -Djasypt.encryptor.password=YOUR_MASTER_KEY -jar target/sbomHelper.war
  * </pre>
  * NEVER commit the master key to the repository. Keep it in environment variables,
  * CI/CD secrets, or your OS keychain.

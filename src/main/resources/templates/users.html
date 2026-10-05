@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>使用者管理 - BOM Helper</title>
+    <title>使用者管理 - sbomHelper</title>
     <link rel="stylesheet" th:href="@{/css/base.css}">
     <link rel="stylesheet" th:href="@{/css/style.css}">
     <link rel="stylesheet" th:href="@{/css/users.css}">
@@ -18,7 +18,7 @@
     <div th:if="${errorMessage}" class="notice error" role="alert" th:text="${errorMessage}"></div>
     <section class="search-container" aria-labelledby="create-heading">
         <h2 id="create-heading">建立使用者</h2>
-        <p class="form-hint">建立本機登入帳號。資訊研發處（0113）帳號由 GitLab 登入自動同步。</p>
+        <p class="form-hint">資訊研發處（0113）使用 GitLab 登入，不需設定本機密碼；帳號須與 GitLab 使用者名稱相同。</p>
         <form th:action="@{/users}" method="post" class="user-form">
             <div class="form-field">
                 <label for="userId">使用者帳號</label>
@@ -29,6 +29,7 @@
                 <label for="authorityCode">帳號權限</label>
                 <select id="authorityCode" name="authorityCode">
                     <option value="0170">0170 · 資訊安全處</option>
+                    <option value="0113">0113 · 資訊研發處</option>
                     <option value="9999">9999 · 管理員</option>
                 </select>
             </div>
@@ -84,5 +85,20 @@
         </nav>
     </section>
 </main>
+<script>
+    const authority = document.getElementById('authorityCode');
+    function updatePasswordFields() {
+        const gitlabAccount = authority.value === '0113';
+        for (const id of ['password', 'confirmation']) {
+            const input = document.getElementById(id);
+            input.disabled = gitlabAccount;
+            input.required = !gitlabAccount;
+            input.closest('.form-field').hidden = gitlabAccount;
+            if (gitlabAccount) input.value = '';
+        }
+    }
+    authority.addEventListener('change', updatePasswordFields);
+    updatePasswordFields();
+</script>
 </body>
 </html>

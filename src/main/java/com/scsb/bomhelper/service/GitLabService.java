@@ -21,6 +21,8 @@ import org.springframework.web.util.UriUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
@@ -42,6 +44,68 @@ public class GitLabService {
     private final GitLabProperties properties;
     private volatile String adminAccessToken;
     private volatile Instant adminTokenExpiresAt = Instant.EPOCH;
+    private record SupervisorDirectory(Map<String, List<GitLabProjectMember>> groups,
+                                       Map<String, List<GitLabProjectMember>> projects,
+                                       Map<String, String> groupPaths,
+                                       Map<String, String> projectNames) { }
+    private volatile SupervisorDirectory supervisorDirectory =
+            new SupervisorDirectory(Map.of(), Map.of(), Map.of(), Map.of());
+
+    /** Refresh after either local or GitLab login. Publish only a complete snapshot. */
+    public synchronized void refreshSupervisorDirectory() {
+        String token = getAdminAccessToken();
+        if (token == null) return;
+        try {
+            Map<String, List<GitLabProjectMember>> groups = new HashMap<>();
+            Map<String, List<GitLabProjectMember>> projects = new HashMap<>();
+            Map<String, String> groupPaths = new HashMap<>();
+            Map<String, String> projectNames = new HashMap<>();
+            for (GitLabGroup group : fetchAllPages("/api/v4/groups?all_available=true", token, GitLabGroup[].class)) {
+                String id = group.getId().toString();
+                List<GitLabProjectMember> members = fetchSupervisors("groups", id, token);
+                groups.put(id, members);
+                if (group.getFullPath() != null) {
+                    groups.put(group.getFullPath(), members);
+                    groupPaths.put(id, group.getFullPath());
+                }
+            }
+            for (GitLabProject project : fetchAllPages("/api/v4/projects?simple=true", token, GitLabProject[].class)) {
+                String id = project.getId().toString();
+                List<GitLabProjectMember> members = fetchSupervisors("projects", id, token);
+                projects.put(id, members);
+                if (project.getPathWithNamespace() != null) projects.put(project.getPathWithNamespace(), members);
+                if (project.getName() != null) {
+                    projectNames.put(id, project.getName());
+                    if (project.getPathWithNamespace() != null) projectNames.put(project.getPathWithNamespace(), project.getName());
+                }
+            }
+            supervisorDirectory = new SupervisorDirectory(Map.copyOf(groups), Map.copyOf(projects), Map.copyOf(groupPaths), Map.copyOf(projectNames));
+            log.info("GitLab Group/Project 主管名單更新完成");
+        } catch (Exception e) {
+            // Do not log response bodies or credentials; retain the last complete snapshot.
+            log.warn("GitLab 主管名單更新失敗，保留前次完整名單");
+        }
+    }
+
+    private <T> List<T> fetchAllPages(String endpoint, String token, Class<T[]> type) {
+        List<T> all = new ArrayList<>();
+        int size = Math.max(1, Math.min(100, properties.getPageSize()));
+        for (int page = 1; ; page++) {
+            T[] items = gitLabRestClient.get()
+                    .uri(endpoint + (endpoint.contains("?") ? "&" : "?") + "per_page=" + size + "&page=" + page)
+                    .header("Authorization", "Bearer " + token).retrieve().body(type);
+            if (items == null || items.length == 0) break;
+            Collections.addAll(all, items);
+            if (items.length < size) break;
+        }
+        return List.copyOf(all);
+    }
+
+    private List<GitLabProjectMember> fetchSupervisors(String resource, String id, String token) {
+        return fetchAllPages("/api/v4/" + resource + "/" + id + "/members/all", token, GitLabProjectMember[].class)
+                .stream().filter(member -> Integer.valueOf(50).equals(member.getAccessLevel())
+                        || Integer.valueOf(40).equals(member.getAccessLevel())).toList();
+    }
 
     public GitLabService(@Qualifier("gitLabRestClient") RestClient gitLabRestClient,
                          GitLabProperties properties) {
@@ -207,17 +271,19 @@ public class GitLabService {
     public List<GitLabProjectMember> fetchGroupMembersAsAdmin(String groupId) {
         if (groupId == null || groupId.isBlank()) return List.of();
 
+        List<GitLabProjectMember> cached = supervisorDirectory.groups().get(groupId);
+        if (cached != null) return cached;
+
         String adminToken = getAdminAccessToken();
         if (adminToken == null) return List.of();
 
         List<GitLabProjectMember> all = new ArrayList<>();
-        String encodedGroupId = UriUtils.encodePathSegment(groupId, StandardCharsets.UTF_8);
         int page = 1;
-        int perPage = properties.getPageSize();
+        int perPage = Math.max(1, Math.min(100, properties.getPageSize()));
         try {
             while (true) {
                 GitLabProjectMember[] members = gitLabRestClient.get()
-                        .uri("/api/v4/groups/" + encodedGroupId + "/members/all?per_page=" + perPage + "&page=" + page)
+                        .uri("/api/v4/groups/{group}/members/all?per_page={size}&page={page}", groupId, perPage, page)
                         .header("Authorization", "Bearer " + adminToken)
                         .retrieve()
                         .onStatus(HttpStatusCode::isError, (req, res) -> {
@@ -226,7 +292,8 @@ public class GitLabService {
                         .body(GitLabProjectMember[].class);
                 if (members == null || members.length == 0) break;
                 Collections.addAll(all, members);
-                if (members.length < perPage || ++page > 50) break;
+                if (members.length < perPage) break;
+                page++;
             }
             return all;
         } catch (Exception e) {
@@ -238,6 +305,12 @@ public class GitLabService {
     /** Project paths include the full namespace, so sibling projects never share contacts. */
     public List<GitLabProjectMember> fetchProjectMembersAsAdmin(String groupId, String projectId) {
         if (projectId == null || projectId.isBlank()) return List.of();
+        SupervisorDirectory directory = supervisorDirectory;
+        String namespacePath = directory.groupPaths().getOrDefault(groupId == null ? "" : groupId, groupId);
+        String key = projectId.matches("[0-9]+") || projectId.contains("/")
+                ? projectId : namespacePath + "/" + projectId;
+        List<GitLabProjectMember> cached = directory.projects().get(key);
+        if (cached != null) return cached;
         String token = getAdminAccessToken();
         if (token == null) return List.of();
         int perPage = Math.max(1, Math.min(100, properties.getPageSize()));
@@ -270,13 +343,44 @@ public class GitLabService {
         }
     }
 
+    /** Resolve the display name, rather than using the stored ID or namespace as a filename. */
+    public String fetchProjectNameAsAdmin(String groupId, String projectId) {
+        if (projectId == null || projectId.isBlank()) return null;
+        SupervisorDirectory directory = supervisorDirectory;
+        String namespace = directory.groupPaths().getOrDefault(groupId == null ? "" : groupId, groupId);
+        String path = projectId.matches("[0-9]+") || projectId.contains("/")
+                ? projectId : namespace + "/" + projectId;
+        String name = directory.projectNames().get(path);
+        if (name != null) return name;
+        String token = getAdminAccessToken();
+        if (token == null) return null;
+        try {
+            if (!projectId.matches("[0-9]+") && !projectId.contains("/")
+                    && groupId != null && groupId.matches("[0-9]+") && !directory.groupPaths().containsKey(groupId)) {
+                GitLabGroup group = gitLabRestClient.get().uri("/api/v4/groups/{id}", groupId)
+                        .header("Authorization", "Bearer " + token).retrieve().body(GitLabGroup.class);
+                if (group == null || group.getFullPath() == null) return null;
+                path = group.getFullPath() + "/" + projectId;
+            }
+            GitLabProject project = gitLabRestClient.get().uri("/api/v4/projects/{project}", path)
+                    .header("Authorization", "Bearer " + token).retrieve().body(GitLabProject.class);
+            return project == null ? null : project.getName();
+        } catch (Exception e) {
+            log.warn("無法取得 GitLab Project 名稱，下載檔名使用專案代號");
+            return null;
+        }
+    }
+
     private synchronized String getAdminAccessToken() {
+        if (properties.getAdminToken() != null && !properties.getAdminToken().isBlank()) {
+            return properties.getAdminToken();
+        }
         if (adminAccessToken != null && Instant.now().isBefore(adminTokenExpiresAt)) {
             return adminAccessToken;
         }
         if (properties.getAdminUsername() == null || properties.getAdminUsername().isBlank()
                 || properties.getAdminPassword() == null || properties.getAdminPassword().isBlank()) {
-            log.warn("未設定 GITLAB_ADMIN_PASSWORD，無法查詢 Group Owner/Maintainer。");
+            log.warn("未設定 GitLab admin token 或管理者帳密，無法查詢主管名單。");
             return null;
         }
         try {

@@ -51,18 +51,19 @@ public class UserManagementService {
         if (!id.matches("[A-Za-z0-9][A-Za-z0-9._@-]{0,99}")) {
             throw new IllegalArgumentException("帳號須為 1–100 個英數字或 . _ @ -，並以英數字開頭。");
         }
-        if (password == null || password.length() < 8 || password.length() > 256 || password.isBlank()) {
+        boolean gitlabAccount = AccountPolicy.GITLAB.equals(authorityCode);
+        if (!gitlabAccount && (password == null || password.length() < 8 || password.length() > 256 || password.isBlank())) {
             throw new IllegalArgumentException("密碼須為 8–256 字元。");
         }
-        if (!password.equals(confirmation)) throw new IllegalArgumentException("兩次密碼輸入不一致。");
-        if (!AccountPolicy.isLocalRole(authorityCode) || !AccountPolicy.isValidStatus(status)) {
-            throw new IllegalArgumentException("請選擇有效的本機帳號權限與狀態；0113 帳號由 GitLab 同步。");
+        if (!gitlabAccount && !password.equals(confirmation)) throw new IllegalArgumentException("兩次密碼輸入不一致。");
+        if ((!AccountPolicy.isLocalRole(authorityCode) && !gitlabAccount) || !AccountPolicy.isValidStatus(status)) {
+            throw new IllegalArgumentException("請選擇有效的帳號權限與狀態。");
         }
         if (users.existsByUserIdIgnoreCase(id)) throw new IllegalArgumentException("此使用者帳號已存在。");
         var now = LocalDateTime.now();
         var account = new BomUser();
         account.setUserId(id);
-        account.setUserPassValidWord(passwords.encode(password));
+        account.setUserPassValidWord(gitlabAccount ? null : passwords.encode(password));
         account.setAuthorityCode(authorityCode);
         account.setStatus(status);
         account.setCreatedBy(actor.getUsername());

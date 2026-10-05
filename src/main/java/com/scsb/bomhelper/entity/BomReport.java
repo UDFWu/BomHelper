@@ -34,6 +34,13 @@ public class BomReport {
     @Column(name = "RawXmlContent", length = Integer.MAX_VALUE)
     private String rawXmlContent;
 
+    // Store the upload itself so XML parsers and DB XML types cannot normalize whitespace.
+    @Column(name = "RawXmlBytes", length = Integer.MAX_VALUE)
+    private byte[] rawXmlBytes;
+
+    public byte[] getRawXmlBytes() { return rawXmlBytes; }
+    public void setRawXmlBytes(byte[] rawXmlBytes) { this.rawXmlBytes = rawXmlBytes; }
+
     @Column(name = "ImportedBy", length = 100, nullable = false)
     private String importedBy;
 

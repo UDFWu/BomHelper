@@ -35,12 +35,12 @@ public class GitLabUserSyncService {
         }
         user = new BomUser();
         user.setUserId(username);
-        user.setCreatedBy(username);
+        user.setCreatedBy("system");
         user.setCreatedDate(now);
         user.setAuthorityCode(AccountPolicy.GITLAB);
         user.setUserPassValidWord(null);
         user.setStatus("A");
-        user.setUpdatedBy(username);
+        user.setUpdatedBy("system");
         user.setUpdatedDate(now);
         users.saveAndFlush(user);
     }
